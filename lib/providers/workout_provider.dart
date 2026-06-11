@@ -1,0 +1,340 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:vibration/vibration.dart';
+import 'package:uuid/uuid.dart';
+import '../models/program.dart';
+import '../models/workout_session.dart';
+import '../services/database_service.dart';
+
+enum WeightUnit { lbs, kg }
+
+enum TimerMode { stopwatch, countdown }
+
+enum WorkoutState { idle, stretching, active, resting, complete }
+
+class _SetDraft {
+  double weight;
+  int reps;
+  bool completed;
+
+  _SetDraft({this.weight = 0, required this.reps, this.completed = false});
+}
+
+class WorkoutProvider extends ChangeNotifier {
+  final _uuid = const Uuid();
+
+  // ignore: unused_field — will be used when building workout history
+  Program? _program;
+  WorkoutDay? _currentDay;
+
+  int _currentExerciseIndex = 0;
+  int _currentSet = 1;
+
+  Timer? _timer;
+  int _timerSeconds = 0;
+  TimerMode _timerMode = TimerMode.stopwatch;
+  WorkoutState _state = WorkoutState.idle;
+
+  Map<String, int> recommendedRest = {};
+  DateTime? _restStartTime;
+
+  // Per-set draft state: exerciseId → list of drafts indexed by set (0-based)
+  final Map<String, List<_SetDraft>> _drafts = {};
+
+  // Weight unit
+  WeightUnit _weightUnit = WeightUnit.lbs;
+
+  // Stretch state
+  StretchPhase _currentStretchPhase = StretchPhase.warmUp;
+  int _currentStretchIndex = 0;
+
+  WorkoutSession? _session;
+
+  WorkoutProvider() {
+    _loadWeightUnit();
+  }
+
+  Future<void> _loadWeightUnit() async {
+    final raw = await DatabaseService.instance.getWeightUnit();
+    _weightUnit = raw == 'kg' ? WeightUnit.kg : WeightUnit.lbs;
+    notifyListeners();
+  }
+
+  // ─── Getters ───────────────────────────────────────────────────────────────
+
+  WorkoutSession? get session => _session;
+  WorkoutDay? get currentDay => _currentDay;
+  int get currentExerciseIndex => _currentExerciseIndex;
+  int get currentSet => _currentSet;
+  int get timerSeconds => _timerSeconds;
+  TimerMode get timerMode => _timerMode;
+  WorkoutState get state => _state;
+  WeightUnit get weightUnit => _weightUnit;
+
+  PlannedExercise? get currentExercise {
+    if (_currentDay == null) return null;
+    if (_currentExerciseIndex >= _currentDay!.exercises.length) return null;
+    return _currentDay!.exercises[_currentExerciseIndex];
+  }
+
+  bool get isLastSet =>
+      currentExercise != null && _currentSet >= currentExercise!.sets;
+
+  bool get isLastExercise =>
+      _currentDay != null &&
+      _currentExerciseIndex >= _currentDay!.exercises.length - 1;
+
+  StretchStep? get currentStretch {
+    if (_currentDay == null) return null;
+    if (_state != WorkoutState.stretching) return null;
+    final list = _currentStretchPhase == StretchPhase.warmUp
+        ? _currentDay!.warmUpStretches
+        : _currentDay!.coolDownStretches;
+    if (_currentStretchIndex >= list.length) return null;
+    return list[_currentStretchIndex];
+  }
+
+  int get totalStretches {
+    if (_currentDay == null) return 0;
+    final list = _currentStretchPhase == StretchPhase.warmUp
+        ? _currentDay!.warmUpStretches
+        : _currentDay!.coolDownStretches;
+    return list.length;
+  }
+
+  List<_SetDraft>? getDraftsForExercise(String exerciseId) =>
+      _drafts[exerciseId];
+
+  // ─── Weight Unit ──────────────────────────────────────────────────────────
+
+  Future<void> toggleUnit() async {
+    final newUnit =
+        _weightUnit == WeightUnit.lbs ? WeightUnit.kg : WeightUnit.lbs;
+    final factor =
+        newUnit == WeightUnit.kg ? 1 / 2.20462 : 2.20462;
+
+    // Convert all uncompleted draft weights
+    for (final drafts in _drafts.values) {
+      for (final d in drafts) {
+        if (!d.completed) {
+          d.weight = double.parse((d.weight * factor).toStringAsFixed(1));
+        }
+      }
+    }
+
+    _weightUnit = newUnit;
+    await DatabaseService.instance
+        .saveWeightUnit(newUnit == WeightUnit.kg ? 'kg' : 'lbs');
+    notifyListeners();
+  }
+
+  // ─── Draft Updates ────────────────────────────────────────────────────────
+
+  void updateDraftWeight(String exerciseId, int setIndex, double weight) {
+    _drafts[exerciseId]?[setIndex].weight = weight;
+    notifyListeners();
+  }
+
+  void updateDraftReps(String exerciseId, int setIndex, int reps) {
+    _drafts[exerciseId]?[setIndex].reps = reps;
+    notifyListeners();
+  }
+
+  // ─── Session Start ────────────────────────────────────────────────────────
+
+  void startSession({
+    required Program program,
+    required WorkoutDay day,
+    required bool isFirstWeek,
+    Map<String, int>? previousRestAverages,
+  }) {
+    _program = program;
+    _currentDay = day;
+    _currentExerciseIndex = 0;
+    _currentSet = 1;
+    _timerMode = isFirstWeek ? TimerMode.stopwatch : TimerMode.countdown;
+    recommendedRest = previousRestAverages ?? {};
+
+    _session = WorkoutSession(
+      id: _uuid.v4(),
+      programId: program.id,
+      workoutDayId: day.id,
+      date: DateTime.now(),
+      sets: [],
+      rests: [],
+    );
+
+    // Pre-populate drafts for every exercise × set
+    _drafts.clear();
+    for (final pe in day.exercises) {
+      _drafts[pe.exercise.id] = List.generate(
+        pe.sets,
+        (i) => _SetDraft(reps: pe.reps),
+      );
+    }
+
+    // Begin with warm-up stretches if any
+    if (day.warmUpStretches.isNotEmpty) {
+      _currentStretchPhase = StretchPhase.warmUp;
+      _currentStretchIndex = 0;
+      _state = WorkoutState.stretching;
+    } else {
+      _state = WorkoutState.active;
+    }
+
+    notifyListeners();
+  }
+
+  // ─── Stretch Navigation ───────────────────────────────────────────────────
+
+  void completeStretch() {
+    if (_currentDay == null) return;
+
+    final list = _currentStretchPhase == StretchPhase.warmUp
+        ? _currentDay!.warmUpStretches
+        : _currentDay!.coolDownStretches;
+
+    if (_currentStretchIndex < list.length - 1) {
+      _currentStretchIndex++;
+    } else if (_currentStretchPhase == StretchPhase.warmUp) {
+      // Done with warm-up → start workout
+      _state = WorkoutState.active;
+    } else {
+      // Done with cool-down → complete
+      _state = WorkoutState.complete;
+    }
+
+    notifyListeners();
+  }
+
+  // ─── Set Completion ───────────────────────────────────────────────────────
+
+  void completeSetByIndex(String exerciseId, int setIndex) {
+    if (_session == null) return;
+    final drafts = _drafts[exerciseId];
+    if (drafts == null || setIndex >= drafts.length) return;
+
+    final draft = drafts[setIndex];
+    if (draft.completed) return;
+
+    draft.completed = true;
+
+    _session!.sets.add(SetLog(
+      id: _uuid.v4(),
+      exerciseId: exerciseId,
+      setNumber: setIndex + 1,
+      weight: draft.weight,
+      reps: draft.reps,
+      completedAt: DateTime.now(),
+    ));
+
+    // Check if all sets for this exercise are done
+    final allDone = drafts.every((d) => d.completed);
+    if (allDone) {
+      _restStartTime = DateTime.now();
+      _state = WorkoutState.resting;
+
+      if (_timerMode == TimerMode.countdown) {
+        _timerSeconds = recommendedRest[exerciseId] ?? 90;
+        _startCountdown();
+      } else {
+        _timerSeconds = 0;
+        _startStopwatch();
+      }
+    }
+
+    notifyListeners();
+  }
+
+  void endRest() {
+    _timer?.cancel();
+
+    if (_restStartTime != null && currentExercise != null) {
+      final elapsed = DateTime.now().difference(_restStartTime!).inSeconds;
+      _session!.rests.add(RestLog(
+        exerciseId: currentExercise!.exercise.id,
+        setNumber: _currentSet,
+        restSeconds: elapsed,
+      ));
+      _restStartTime = null;
+    }
+
+    _advanceToNextExercise();
+  }
+
+  void _advanceToNextExercise() {
+    if (isLastExercise) {
+      _startCoolDown();
+    } else {
+      _currentExerciseIndex++;
+      _currentSet = 1;
+      _state = WorkoutState.active;
+    }
+    notifyListeners();
+  }
+
+  void _startCoolDown() {
+    if (_currentDay != null && _currentDay!.coolDownStretches.isNotEmpty) {
+      _currentStretchPhase = StretchPhase.coolDown;
+      _currentStretchIndex = 0;
+      _state = WorkoutState.stretching;
+    } else {
+      _finishWorkout();
+    }
+  }
+
+  Future<void> _finishWorkout() async {
+    _session!.isComplete = true;
+    _state = WorkoutState.complete;
+    _timer?.cancel();
+
+    await DatabaseService.instance.saveSession(_session!);
+    if (_program != null) {
+      await DatabaseService.instance
+          .saveRestRecommendations(_program!.id, sessionRestAverages);
+    }
+
+    notifyListeners();
+  }
+
+  void _startCountdown() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_timerSeconds <= 0) {
+        t.cancel();
+        _onTimerComplete();
+      } else {
+        _timerSeconds--;
+        notifyListeners();
+      }
+    });
+  }
+
+  void _startStopwatch() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      _timerSeconds++;
+      notifyListeners();
+    });
+  }
+
+  Future<void> _onTimerComplete() async {
+    if (await Vibration.hasVibrator()) {
+      Vibration.vibrate(pattern: [0, 400, 100, 400]);
+    }
+    endRest();
+  }
+
+  Map<String, int> get sessionRestAverages {
+    return _session?.averageRestPerExercise.map(
+          (id, duration) => MapEntry(id, duration.inSeconds),
+        ) ??
+        {};
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+}
