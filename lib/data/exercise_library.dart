@@ -33,6 +33,37 @@ final exerciseLibrary = <Exercise>[
         'Press back up until arms are extended. Keep your feet flat and lower back against the pad.',
   ),
   const Exercise(
+    id: 'smith_bench_press',
+    name: 'Smith Machine Flat Bench Press',
+    primaryMuscles: [MuscleGroup.chest],
+    secondaryMuscles: [MuscleGroup.triceps, MuscleGroup.shoulders],
+    instructions:
+        'Lie flat on the bench with the bar lined up over your mid-chest. Grip just outside shoulder width. '
+        'Unrack by rotating the hooks, lower the bar to your chest with a controlled eccentric, and pause briefly at the chest. '
+        'Press back up until arms are fully extended. The fixed bar path lets you focus on driving through the chest.',
+  ),
+  const Exercise(
+    id: 'smith_incline_press',
+    name: 'Smith Machine Incline Bench Press',
+    primaryMuscles: [MuscleGroup.chest],
+    secondaryMuscles: [MuscleGroup.triceps, MuscleGroup.shoulders],
+    instructions:
+        'Set the bench to roughly a 30° incline under the Smith bar, lined up with your upper chest. '
+        'Grip just outside shoulder width, unrack, and lower the bar to your upper chest with control. '
+        'Press back up until arms are extended. Keep your feet flat and lower back against the pad.',
+  ),
+  const Exercise(
+    id: 'pec_deck_fly',
+    name: 'Pec Deck Fly',
+    primaryMuscles: [MuscleGroup.chest],
+    secondaryMuscles: [MuscleGroup.shoulders],
+    instructions:
+        'Sit with your back flat against the pad, forearms or hands on the handles at chest height. '
+        'Squeeze your chest to bring the handles together in front of you. '
+        'Hold the squeeze at the peak for a beat, then return slowly with a controlled negative. '
+        'Keep your shoulders back and down throughout.',
+  ),
+  const Exercise(
     id: 'push_up',
     name: 'Push Up',
     primaryMuscles: [MuscleGroup.chest],
@@ -78,6 +109,28 @@ final exerciseLibrary = <Exercise>[
         'Slowly extend arms back to the start — do not round your lower back.',
   ),
   const Exercise(
+    id: 'smith_row',
+    name: 'Smith Machine Bent-Over Row',
+    primaryMuscles: [MuscleGroup.back],
+    secondaryMuscles: [MuscleGroup.biceps],
+    instructions:
+        'Stand over the Smith bar with feet hip-width apart and hinge at the hips until your torso is close to parallel. '
+        'Take an overhand grip just outside your knees. '
+        'Pull the bar to your lower chest, driving elbows back and squeezing your shoulder blades. '
+        'Lower with control. Keep your back flat the entire set.',
+  ),
+  const Exercise(
+    id: 'db_single_arm_row',
+    name: 'Dumbbell Single-Arm Row',
+    primaryMuscles: [MuscleGroup.back],
+    secondaryMuscles: [MuscleGroup.biceps],
+    instructions:
+        'Place one knee and the same-side hand on a bench, holding a dumbbell in the other hand. '
+        'Let the dumbbell hang for a full stretch at the bottom. '
+        'Row the dumbbell up to your hip, driving the elbow back and keeping your torso square. '
+        'Lower slowly back to the full stretch. Complete all reps, then switch sides.',
+  ),
+  const Exercise(
     id: 'deadlift',
     name: 'Deadlift',
     primaryMuscles: [MuscleGroup.back, MuscleGroup.glutes],
@@ -113,6 +166,28 @@ final exerciseLibrary = <Exercise>[
         'Avoid shrugging your traps — keep tension on the side delts.',
   ),
   const Exercise(
+    id: 'seated_db_press',
+    name: 'Dumbbell Overhead Press (Seated)',
+    primaryMuscles: [MuscleGroup.shoulders],
+    secondaryMuscles: [MuscleGroup.triceps],
+    instructions:
+        'Sit on an upright bench with dumbbells at shoulder height, palms facing forward or in a neutral grip. '
+        'Press both dumbbells overhead until your arms are extended, without clanging them together. '
+        'Lower back to shoulder height with control. '
+        'Keep your lower back against the pad and core braced — no arching.',
+  ),
+  const Exercise(
+    id: 'rear_delt_fly',
+    name: 'DB Rear Delt Fly',
+    primaryMuscles: [MuscleGroup.shoulders],
+    secondaryMuscles: [MuscleGroup.back],
+    instructions:
+        'Hinge forward at the hips with light dumbbells hanging below your chest, slight bend in the elbows. '
+        'Raise the dumbbells out to the sides until they reach shoulder height, leading with your elbows. '
+        'Focus on the contraction in your rear delts — not momentum. '
+        'Lower slowly. Go lighter than you think; this is a contraction exercise.',
+  ),
+  const Exercise(
     id: 'face_pull',
     name: 'Face Pull',
     primaryMuscles: [MuscleGroup.shoulders],
@@ -137,6 +212,17 @@ final exerciseLibrary = <Exercise>[
         'Avoid swinging your body to generate momentum.',
   ),
   const Exercise(
+    id: 'db_curl',
+    name: 'Dumbbell Curl',
+    primaryMuscles: [MuscleGroup.biceps],
+    secondaryMuscles: [MuscleGroup.forearms],
+    instructions:
+        'Stand holding dumbbells at your sides with an underhand grip. '
+        'Keeping your elbows pinned to your sides, curl the dumbbells up toward your shoulders. '
+        'Squeeze the biceps at the top, then lower slowly back to the start. '
+        'No swinging — if you have to rock your body, the weight is too heavy.',
+  ),
+  const Exercise(
     id: 'hammer_curl',
     name: 'Hammer Curl',
     primaryMuscles: [MuscleGroup.biceps],
@@ -157,6 +243,17 @@ final exerciseLibrary = <Exercise>[
         'Grip the attachment with elbows tucked at your sides. '
         'Push down until your arms are fully extended, squeezing the triceps. '
         'Return slowly to the start — keep elbows fixed throughout.',
+  ),
+  const Exercise(
+    id: 'db_overhead_tricep_extension',
+    name: 'Dumbbell Overhead Tricep Extension',
+    primaryMuscles: [MuscleGroup.triceps],
+    secondaryMuscles: [],
+    instructions:
+        'Sit or stand holding one dumbbell with both hands overhead, arms extended. '
+        'Lower the dumbbell behind your head by bending only at the elbows, keeping them pointed forward. '
+        'Extend back up and squeeze the triceps hard at lockout. '
+        'Keep your upper arms still — only the forearms move.',
   ),
   const Exercise(
     id: 'skull_crusher',
@@ -194,6 +291,39 @@ final exerciseLibrary = <Exercise>[
         'Drive your hips forward to return to standing — squeeze glutes at the top.',
   ),
   const Exercise(
+    id: 'smith_squat',
+    name: 'Smith Machine Squat',
+    primaryMuscles: [MuscleGroup.quads, MuscleGroup.glutes],
+    secondaryMuscles: [MuscleGroup.hamstrings, MuscleGroup.core],
+    instructions:
+        'Set the bar across your upper traps and place your feet slightly forward of the bar. '
+        'Brace your core and sit back and down, keeping your chest up. '
+        'Descend only through a pain-free range of motion — depth is earned, not forced. '
+        'Drive through your heels to stand back up.',
+  ),
+  const Exercise(
+    id: 'smith_rdl',
+    name: 'Smith Machine Romanian Deadlift',
+    primaryMuscles: [MuscleGroup.hamstrings, MuscleGroup.glutes],
+    secondaryMuscles: [MuscleGroup.back],
+    instructions:
+        'Stand holding the Smith bar at hip height, feet hip-width apart. '
+        'Hinge at the hips, pushing them back as the bar travels down your legs. '
+        'Keep a slight bend in your knees and your back flat — you should feel a strong hamstring stretch. '
+        'Drive your hips forward to return to standing and squeeze your glutes at the top.',
+  ),
+  const Exercise(
+    id: 'leg_extension',
+    name: 'Leg Extension',
+    primaryMuscles: [MuscleGroup.quads],
+    secondaryMuscles: [],
+    instructions:
+        'Sit in the machine with the pad on your shins just above the ankles. '
+        'Extend your legs until they are fully straight, squeezing the quads hard at the top. '
+        'Lower with control — do not let the stack slam. '
+        'Keep your back against the pad and grip the handles for stability.',
+  ),
+  const Exercise(
     id: 'leg_press',
     name: 'Leg Press',
     primaryMuscles: [MuscleGroup.quads],
@@ -225,6 +355,39 @@ final exerciseLibrary = <Exercise>[
         'Rise up onto your toes as high as possible, squeezing the calves. '
         'Slowly lower your heels below the platform level for a full stretch. '
         'Keep a slight bend in your knees throughout.',
+  ),
+  const Exercise(
+    id: 'smith_calf_raise',
+    name: 'Standing Calf Raise (Smith)',
+    primaryMuscles: [MuscleGroup.calves],
+    secondaryMuscles: [],
+    instructions:
+        'Stand under the Smith bar with the balls of your feet on a block or plate, heels hanging off. '
+        'Rise up onto your toes as high as possible, squeezing the calves at the top. '
+        'Lower slowly until your heels drop below the platform for a full stretch at the bottom. '
+        'Keep your knees nearly straight throughout.',
+  ),
+  const Exercise(
+    id: 'db_walking_lunge',
+    name: 'Dumbbell Walking Lunge',
+    primaryMuscles: [MuscleGroup.quads, MuscleGroup.glutes],
+    secondaryMuscles: [MuscleGroup.hamstrings],
+    instructions:
+        'Hold dumbbells at your sides and step forward into a lunge, lowering your back knee toward the floor. '
+        'Front thigh parallel to the floor, front knee over your ankle. '
+        'Push through the front heel and step straight into the next lunge with the other leg. '
+        'If your hip flares up, stop and substitute a goblet squat to a box.',
+  ),
+  const Exercise(
+    id: 'db_step_up',
+    name: 'Dumbbell Step-Up',
+    primaryMuscles: [MuscleGroup.quads, MuscleGroup.glutes],
+    secondaryMuscles: [MuscleGroup.hamstrings],
+    instructions:
+        'Hold dumbbells at your sides facing a bench or box. '
+        'Place one full foot on the bench and drive through the front heel to step up — '
+        'no push-off from the back foot. '
+        'Lower back down with control. Complete all reps on one leg, then switch.',
   ),
   const Exercise(
     id: 'lunge',

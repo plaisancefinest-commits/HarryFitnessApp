@@ -151,7 +151,13 @@ class WorkoutProvider extends ChangeNotifier {
     _currentDay = day;
     _currentExerciseIndex = 0;
     _currentSet = 1;
-    _timerMode = isFirstWeek ? TimerMode.stopwatch : TimerMode.countdown;
+    // Count down when rest is prescribed by the program or learned from
+    // history; otherwise use a stopwatch for the first week to learn it.
+    final hasPrescribedRest =
+        day.exercises.any((pe) => pe.restSeconds != null);
+    _timerMode = isFirstWeek && !hasPrescribedRest
+        ? TimerMode.stopwatch
+        : TimerMode.countdown;
     recommendedRest = previousRestAverages ?? {};
 
     _session = WorkoutSession(
@@ -163,12 +169,17 @@ class WorkoutProvider extends ChangeNotifier {
       rests: [],
     );
 
-    // Pre-populate drafts for every exercise × set
+    // Pre-populate drafts for every exercise × set, prefilled with the
+    // program's target weight (converted to the display unit).
     _drafts.clear();
     for (final pe in day.exercises) {
+      final targetLbs = pe.targetWeightLbs ?? 0;
+      final displayWeight = _weightUnit == WeightUnit.kg
+          ? double.parse((targetLbs / 2.20462).toStringAsFixed(1))
+          : targetLbs;
       _drafts[pe.exercise.id] = List.generate(
         pe.sets,
-        (i) => _SetDraft(reps: pe.reps),
+        (i) => _SetDraft(weight: displayWeight, reps: pe.reps),
       );
     }
 
@@ -239,7 +250,12 @@ class WorkoutProvider extends ChangeNotifier {
     _state = WorkoutState.resting;
 
     if (_timerMode == TimerMode.countdown) {
-      _timerSeconds = recommendedRest[exerciseId] ?? 90;
+      // Prefer learned rest averages, then the program's prescribed rest.
+      final plannedRest = _currentDay?.exercises
+          .where((pe) => pe.exercise.id == exerciseId)
+          .firstOrNull
+          ?.restSeconds;
+      _timerSeconds = recommendedRest[exerciseId] ?? plannedRest ?? 90;
       _startCountdown();
     } else {
       _timerSeconds = 0;

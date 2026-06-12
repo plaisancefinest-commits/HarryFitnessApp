@@ -4,6 +4,193 @@ import 'exercise_library.dart';
 
 Exercise _findExercise(String id) => exerciseLibrary.firstWhere((e) => e.id == id);
 
+// ─── Harry's Program ──────────────────────────────────────────────────────────
+// His real schedule. Progression: hit all prescribed reps clean → add
+// 5–10 lbs to bench/row and 5 lbs to everything else the following week.
+
+final harryProgram = Program(
+  id: 'harry_program',
+  name: "Harry's Program",
+  level: UserLevel.intermediate,
+  days: [
+    WorkoutDay(
+      id: 'harry_day_1',
+      name: 'Day 1',
+      description: 'Upper A · Strength',
+      estimatedMinutes: 55,
+      exercises: [
+        PlannedExercise(
+            id: 'h1_1', exercise: _findExercise('smith_bench_press'),
+            sets: 4, reps: 6, order: 0, targetWeightLbs: 125, restSeconds: 150,
+            notes: 'Warm up with 1×12 @ 100 lb first — skip the ramp. '
+                'Controlled eccentric, pause at chest.'),
+        PlannedExercise(
+            id: 'h1_2', exercise: _findExercise('smith_row'),
+            sets: 4, reps: 6, order: 1, targetWeightLbs: 110, restSeconds: 150,
+            notes: 'Warm up with 1×8 @ 70 lb first. '
+                'Overhand grip, pull to lower chest.'),
+        PlannedExercise(
+            id: 'h1_3', exercise: _findExercise('seated_db_press'),
+            sets: 3, reps: 8, order: 2, targetWeightLbs: 30, restSeconds: 90,
+            notes: 'Neutral or pronated grip.'),
+        PlannedExercise(
+            id: 'h1_4', exercise: _findExercise('pec_deck_fly'),
+            sets: 3, reps: 12, order: 3, targetWeightLbs: 90, restSeconds: 90,
+            notes: 'Start at working weight — no warm-up set. '
+                'Squeeze at peak, slow negative.'),
+        PlannedExercise(
+            id: 'h1_5', exercise: _findExercise('rear_delt_fly'),
+            sets: 3, reps: 15, order: 4, targetWeightLbs: 5, restSeconds: 60,
+            notes: 'Focus on contraction.'),
+        PlannedExercise(
+            id: 'h1_6', exercise: _findExercise('db_curl'),
+            sets: 3, reps: 10, order: 5, targetWeightLbs: 25, restSeconds: 60,
+            notes: 'Alternating or bilateral.'),
+        PlannedExercise(
+            id: 'h1_7',
+            exercise: _findExercise('db_overhead_tricep_extension'),
+            sets: 3, reps: 10, order: 6, targetWeightLbs: 15, restSeconds: 90,
+            notes: 'Single DB, both hands.'),
+      ],
+    ),
+    WorkoutDay(
+      id: 'harry_day_2',
+      name: 'Day 2',
+      description: 'Lower A · Strength',
+      estimatedMinutes: 70,
+      exercises: [
+        PlannedExercise(
+            id: 'h2_1', exercise: _findExercise('smith_squat'),
+            sets: 4, reps: 6, order: 0, targetWeightLbs: 95, restSeconds: 180,
+            notes: 'Feet slightly forward of bar, depth to pain-free ROM only.'),
+        PlannedExercise(
+            id: 'h2_2', exercise: _findExercise('smith_rdl'),
+            sets: 4, reps: 6, order: 1, targetWeightLbs: 100, restSeconds: 120,
+            notes: 'Hinge at hips, slight knee bend, feel hamstrings.'),
+        PlannedExercise(
+            id: 'h2_3', exercise: _findExercise('leg_extension'),
+            sets: 3, reps: 10, order: 2, targetWeightLbs: 150, restSeconds: 120,
+            notes: 'Controlled, full extension, squeeze quad.'),
+        PlannedExercise(
+            id: 'h2_4', exercise: _findExercise('leg_curl'),
+            sets: 3, reps: 12, order: 3, targetWeightLbs: 120, restSeconds: 120,
+            notes: 'Slow eccentric — 3 seconds down.'),
+        PlannedExercise(
+            id: 'h2_5', exercise: _findExercise('db_walking_lunge'),
+            sets: 3, reps: 8, order: 4, targetWeightLbs: 20, restSeconds: 120,
+            notes: '8 reps each leg. Skip if hip flares — '
+                'substitute goblet squat to box.'),
+        PlannedExercise(
+            id: 'h2_6', exercise: _findExercise('smith_calf_raise'),
+            sets: 3, reps: 15, order: 5, targetWeightLbs: 110, restSeconds: 60,
+            notes: 'Full stretch at bottom.'),
+      ],
+      warmUpStretches: const [
+        StretchStep(
+            name: 'Hip CARs', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: 'Controlled articular rotations: 2 × 5 each direction, standing. '
+                'Slow, full pain-free range of motion. Hold something for balance.'),
+        StretchStep(
+            name: 'Side-Lying Clamshell', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: '2 × 15 each side. Band above the knees if available, '
+                'bodyweight if not. Feet stay together; open the top knee like a clamshell.'),
+        StretchStep(
+            name: 'Single-Leg Glute Bridge', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: '2 × 10 each side. Drive through the heel and hold the top '
+                'for 2 seconds. Keep your hips level — no rotation.'),
+      ],
+    ),
+    WorkoutDay(
+      id: 'harry_day_4',
+      name: 'Day 4',
+      description: 'Upper B · Hypertrophy',
+      estimatedMinutes: 50,
+      exercises: [
+        PlannedExercise(
+            id: 'h4_1', exercise: _findExercise('smith_incline_press'),
+            sets: 3, reps: 12, order: 0, targetWeightLbs: 95, restSeconds: 60,
+            notes: '~30° angle, controlled.'),
+        PlannedExercise(
+            id: 'h4_2', exercise: _findExercise('db_single_arm_row'),
+            sets: 3, reps: 12, order: 1, targetWeightLbs: 40, restSeconds: 120,
+            notes: 'Knee on bench, full stretch at bottom.'),
+        PlannedExercise(
+            id: 'h4_3', exercise: _findExercise('lateral_raise'),
+            sets: 3, reps: 15, order: 2, targetWeightLbs: 10, restSeconds: 60,
+            notes: 'Light, controlled, slight lean forward.'),
+        PlannedExercise(
+            id: 'h4_4', exercise: _findExercise('pec_deck_fly'),
+            sets: 3, reps: 15, order: 3, targetWeightLbs: 70, restSeconds: 60,
+            notes: 'Pump, not load — higher reps than Day 1.'),
+        PlannedExercise(
+            id: 'h4_5', exercise: _findExercise('rear_delt_fly'),
+            sets: 3, reps: 15, order: 4, targetWeightLbs: 5, restSeconds: 60,
+            notes: 'Superset with pec deck if short on time.'),
+        PlannedExercise(
+            id: 'h4_6', exercise: _findExercise('hammer_curl'),
+            sets: 3, reps: 12, order: 5, targetWeightLbs: 20, restSeconds: 60,
+            notes: 'Neutral grip, no swing.'),
+        PlannedExercise(
+            id: 'h4_7', exercise: _findExercise('db_overhead_tricep_extension'),
+            sets: 3, reps: 15, order: 6, targetWeightLbs: 15, restSeconds: 60,
+            notes: 'Squeeze at lockout.'),
+      ],
+    ),
+    WorkoutDay(
+      id: 'harry_day_5',
+      name: 'Day 5',
+      description: 'Lower B · Hypertrophy',
+      estimatedMinutes: 55,
+      exercises: [
+        PlannedExercise(
+            id: 'h5_1', exercise: _findExercise('smith_squat'),
+            sets: 3, reps: 10, order: 0, restSeconds: 90,
+            notes: 'Lighter than Day 2 — focus on depth and control.'),
+        PlannedExercise(
+            id: 'h5_2', exercise: _findExercise('smith_rdl'),
+            sets: 3, reps: 10, order: 1, restSeconds: 90,
+            notes: 'Lighter — feel the stretch.'),
+        PlannedExercise(
+            id: 'h5_3', exercise: _findExercise('leg_extension'),
+            sets: 3, reps: 15, order: 2, restSeconds: 90,
+            notes: 'Drop set on final set: strip 30%, rep to failure.'),
+        PlannedExercise(
+            id: 'h5_4', exercise: _findExercise('leg_curl'),
+            sets: 3, reps: 15, order: 3, restSeconds: 90,
+            notes: 'Drop set on final set.'),
+        PlannedExercise(
+            id: 'h5_5', exercise: _findExercise('db_step_up'),
+            sets: 3, reps: 10, order: 4, restSeconds: 90,
+            notes: '10 reps each leg, to a bench. Drive through front heel — '
+                'no push-off from the back foot.'),
+        PlannedExercise(
+            id: 'h5_6', exercise: _findExercise('smith_calf_raise'),
+            sets: 3, reps: 20, order: 5, restSeconds: 60,
+            notes: 'Slow, full ROM.'),
+      ],
+      warmUpStretches: const [
+        StretchStep(
+            name: 'Hip CARs', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: 'Controlled articular rotations: 2 × 5 each direction, standing. '
+                'Same as Day 2 — slow, full pain-free range of motion.'),
+        StretchStep(
+            name: 'Kickstand Squat', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: 'Bodyweight: 2 × 8 each side. Back foot staggered behind on the toes. '
+                'Push knees out and control the descent.'),
+        StretchStep(
+            name: 'Single-Leg Glute Bridge', durationSeconds: 120,
+            phase: StretchPhase.warmUp,
+            instructions: '2 × 10 each side. Drive through the heel, hold the top 2 seconds.'),
+      ],
+    ),
+  ],
+);
+
 // ─── Noob Program ─────────────────────────────────────────────────────────────
 
 final noobProgram = Program(
@@ -170,4 +357,4 @@ final beginnerProgram = Program(
   ],
 );
 
-final samplePrograms = [noobProgram, beginnerProgram];
+final samplePrograms = [harryProgram, noobProgram, beginnerProgram];

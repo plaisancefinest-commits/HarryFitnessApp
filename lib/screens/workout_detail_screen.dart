@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../data/exercise_library.dart';
 import '../models/exercise.dart';
 import '../models/program.dart';
+import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 
 /// Full view of a workout day: every exercise with sets × reps and target
@@ -73,8 +75,20 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
     }
   }
 
+  String _setLine(PlannedExercise pe, WeightUnit unit) {
+    var line = '${pe.sets} sets × ${pe.reps} reps';
+    final lbs = pe.targetWeightLbs;
+    if (lbs != null) {
+      final v = unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+      final label = unit == WeightUnit.kg ? 'kg' : 'lbs';
+      line += ' @ ${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $label';
+    }
+    return '$line · ${_muscleNames(pe.exercise)}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final unit = context.watch<WorkoutProvider>().weightUnit;
     final exercises = [...widget.day.exercises]
       ..sort((a, b) => a.order.compareTo(b.order));
 
@@ -116,9 +130,22 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                                     Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 4),
                             Text(
-                              '${pe.sets} sets × ${pe.reps} reps · ${_muscleNames(pe.exercise)}',
+                              _setLine(pe, unit),
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
+                            if (pe.notes != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                pe.notes!,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      color: const Color(0xFF9E9E9E),
+                                    ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

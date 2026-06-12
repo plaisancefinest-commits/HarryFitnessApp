@@ -109,6 +109,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                     ),
                   ],
                 ),
+                if (exercise.targetWeightLbs != null ||
+                    exercise.notes != null) ...[
+                  const SizedBox(height: 12),
+                  _TargetInfo(exercise: exercise, unit: provider.weightUnit),
+                ],
                 const SizedBox(height: 20),
 
                 // Muscle diagram
@@ -252,7 +257,9 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Hold for ${stretch.durationSeconds} seconds',
+                stretch.durationSeconds >= 120
+                    ? '${stretch.durationSeconds ~/ 60} minutes'
+                    : 'Hold for ${stretch.durationSeconds} seconds',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               if (stretch.instructions != null) ...[
@@ -324,6 +331,63 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─── Target Info ─────────────────────────────────────────────────────────────
+
+/// Prescribed sets × reps @ weight, rest time, and coach notes for the
+/// current exercise.
+class _TargetInfo extends StatelessWidget {
+  final PlannedExercise exercise;
+  final WeightUnit unit;
+
+  const _TargetInfo({required this.exercise, required this.unit});
+
+  String _formatWeight(double lbs) {
+    final v = unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+    final label = unit == WeightUnit.kg ? 'kg' : 'lbs';
+    return '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $label';
+  }
+
+  String _formatRest(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return s == 0 ? '$m:00' : '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[
+      if (exercise.targetWeightLbs != null)
+        '${exercise.sets} × ${exercise.reps} @ ${_formatWeight(exercise.targetWeightLbs!)}',
+      if (exercise.restSeconds != null)
+        'Rest ${_formatRest(exercise.restSeconds!)}',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (parts.isNotEmpty)
+          Text(
+            parts.join(' · '),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF2C2C2C),
+                ),
+          ),
+        if (exercise.notes != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            exercise.notes!,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  color: const Color(0xFF6B6B6B),
+                ),
+          ),
+        ],
+      ],
     );
   }
 }

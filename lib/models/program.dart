@@ -61,11 +61,23 @@ class PlannedExercise {
   final int reps;
   int order;
 
+  /// Prescribed working weight, stored in lbs (display converts).
+  final double? targetWeightLbs;
+
+  /// Prescribed rest between sets, in seconds.
+  final int? restSeconds;
+
+  /// Coach/program notes (form cues, warm-up sets, substitutions).
+  final String? notes;
+
   PlannedExercise({
     required this.id,
     required this.exercise,
     required this.sets,
     required this.reps,
     required this.order,
+    this.targetWeightLbs,
+    this.restSeconds,
+    this.notes,
   });
 }
