@@ -95,11 +95,12 @@ class _DashboardTabState extends State<_DashboardTab> {
     }
   }
 
-  /// Re-apply any exercise swaps the user saved in previous sessions.
+  /// Re-apply any exercise swaps and custom exercise ordering the user
+  /// saved in previous sessions.
   Future<void> _applyExerciseOverrides(
       DatabaseService db, Program program) async {
     final overrides = await db.getExerciseOverrides();
-    if (overrides.isEmpty) return;
+    final orderOverrides = await db.getExerciseOrderOverrides();
     for (final day in program.days) {
       for (final pe in day.exercises) {
         final overrideId = overrides[pe.id];
@@ -107,6 +108,16 @@ class _DashboardTabState extends State<_DashboardTab> {
           final replacement =
               exerciseLibrary.where((e) => e.id == overrideId).firstOrNull;
           if (replacement != null) pe.exercise = replacement;
+        }
+      }
+      final order = orderOverrides[day.id];
+      if (order != null) {
+        // Saved ids first (in saved order); anything new keeps its place after.
+        final index = {for (var i = 0; i < order.length; i++) order[i]: i};
+        day.exercises.sort((a, b) => (index[a.id] ?? 1000 + a.order)
+            .compareTo(index[b.id] ?? 1000 + b.order));
+        for (var i = 0; i < day.exercises.length; i++) {
+          day.exercises[i].order = i;
         }
       }
     }
@@ -291,7 +302,10 @@ class _NextDayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onViewFull,
+        child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,6 +346,7 @@ class _NextDayCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
         ),
       ),
     );

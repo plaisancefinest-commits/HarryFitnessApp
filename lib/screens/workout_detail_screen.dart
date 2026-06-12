@@ -5,9 +5,11 @@ import '../models/exercise.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
+import 'exercise_detail_screen.dart';
 
 /// Full view of a workout day: every exercise with sets × reps and target
-/// muscles. Each exercise can be swapped for another from the library.
+/// muscles. Exercises can be swapped, dragged into a new order (persisted),
+/// and tapped to drill down into the full prescription.
 class WorkoutDetailScreen extends StatefulWidget {
   final WorkoutDay day;
 
@@ -18,6 +20,33 @@ class WorkoutDetailScreen extends StatefulWidget {
 }
 
 class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
+  late List<PlannedExercise> _exercises;
+
+  @override
+  void initState() {
+    super.initState();
+    _exercises = [...widget.day.exercises]
+      ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  void _onReorder(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex--;
+      final item = _exercises.removeAt(oldIndex);
+      _exercises.insert(newIndex, item);
+      for (var i = 0; i < _exercises.length; i++) {
+        _exercises[i].order = i;
+      }
+      // Keep the shared day object in sync so "Start Workout" follows
+      // the new order immediately.
+      widget.day.exercises
+        ..clear()
+        ..addAll(_exercises);
+    });
+    DatabaseService.instance.saveExerciseOrder(
+        widget.day.id, _exercises.map((e) => e.id).toList());
+  }
+
   String _muscleNames(Exercise e) =>
       e.primaryMuscles.map(_muscleName).join(', ');
 
@@ -89,8 +118,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final unit = context.watch<WorkoutProvider>().weightUnit;
-    final exercises = [...widget.day.exercises]
-      ..sort((a, b) => a.order.compareTo(b.order));
+    final exercises = _exercises;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -104,39 +132,81 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
         title: Text('${widget.day.name} · ${widget.day.description}',
             style: Theme.of(context).textTheme.titleMedium),
       ),
-      body: ListView(
+      body: ReorderableListView(
         padding: const EdgeInsets.all(24),
-        children: [
-          if (widget.day.warmUpStretches.isNotEmpty)
-            _PhaseCard(
-              label: 'WARM UP',
-              lines: widget.day.warmUpStretches
-                  .map((s) => '${s.name} · ${s.durationSeconds}s')
-                  .toList(),
+        onReorder: _onReorder,
+        buildDefaultDragHandles: false,
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.day.warmUpStretches.isNotEmpty) ...[
+              _PhaseCard(
+                label: 'WARM UP',
+                lines: widget.day.warmUpStretches
+                    .map((s) => '${s.name} · ${s.durationSeconds}s')
+                    .toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Hold the handle to drag exercises into a new order.',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ),
-          const SizedBox(height: 12),
-          ...exercises.map((pe) => Card(
-                margin: const EdgeInsets.only(bottom: 12),
+          ],
+        ),
+        footer: widget.day.coolDownStretches.isNotEmpty
+            ? _PhaseCard(
+                label: 'COOL DOWN',
+                lines: widget.day.coolDownStretches
+                    .map((s) => '${s.name} · ${s.durationSeconds}s')
+                    .toList(),
+              )
+            : null,
+        children: [
+          for (var i = 0; i < exercises.length; i++)
+            Card(
+              key: ValueKey(exercises[i].id),
+              margin: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ExerciseDetailScreen(planned: exercises[i]),
+                  ),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: const Padding(
+                          padding: EdgeInsets.only(right: 12),
+                          child: Icon(Icons.drag_indicator,
+                              color: Color(0xFFCCC8C2), size: 20),
+                        ),
+                      ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(pe.exercise.name,
+                            Text(exercises[i].exercise.name,
                                 style:
                                     Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 4),
                             Text(
-                              _setLine(pe, unit),
+                              _setLine(exercises[i], unit),
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                            if (pe.notes != null) ...[
+                            if (exercises[i].notes != null) ...[
                               const SizedBox(height: 4),
                               Text(
-                                pe.notes!,
+                                exercises[i].notes!,
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodyMedium
@@ -153,18 +223,14 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                         icon: const Icon(Icons.swap_horiz,
                             color: Color(0xFF6B6B6B), size: 20),
                         tooltip: 'Swap exercise',
-                        onPressed: () => _swapExercise(pe),
+                        onPressed: () => _swapExercise(exercises[i]),
                       ),
+                      const Icon(Icons.chevron_right,
+                          color: Color(0xFFCCC8C2)),
                     ],
                   ),
                 ),
-              )),
-          if (widget.day.coolDownStretches.isNotEmpty)
-            _PhaseCard(
-              label: 'COOL DOWN',
-              lines: widget.day.coolDownStretches
-                  .map((s) => '${s.name} · ${s.durationSeconds}s')
-                  .toList(),
+              ),
             ),
         ],
       ),

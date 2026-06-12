@@ -322,6 +322,27 @@ class DatabaseService {
     await prefs.setString(_overridesKey, jsonEncode(overrides));
   }
 
+  // ─── Exercise order overrides (user dragged exercises into a new order) ────
+
+  static const _orderOverridesKey = 'exercise_order_overrides';
+
+  /// Map of WorkoutDay.id → ordered list of PlannedExercise.ids
+  Future<Map<String, List<String>>> getExerciseOrderOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_orderOverridesKey);
+    if (raw == null) return {};
+    return Map<String, dynamic>.from(jsonDecode(raw))
+        .map((k, v) => MapEntry(k, List<String>.from(v)));
+  }
+
+  Future<void> saveExerciseOrder(
+      String dayId, List<String> orderedPlannedExerciseIds) async {
+    final overrides = await getExerciseOrderOverrides();
+    overrides[dayId] = orderedPlannedExerciseIds;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_orderOverridesKey, jsonEncode(overrides));
+  }
+
   // ─── Custom programs ────────────────────────────────────────────────────────
 
   static const _customProgramsKey = 'custom_programs';

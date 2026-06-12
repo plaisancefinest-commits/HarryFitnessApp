@@ -7,9 +7,12 @@ import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 
 const _kgFactor = 2.20462;
+const _orange = Color(0xFFE8702A);
 
-/// Home-screen card: line graph of body weight from the starting weight/date
-/// toward the goal weight/end date, with logged weigh-ins along the way.
+enum _Range { w1, m1, m3, ytd, y1, all }
+
+/// Home-screen card: Robinhood-style line graph of body weight with a
+/// time-range selector, plus the dashed trajectory toward the goal.
 class WeightProgressCard extends StatefulWidget {
   const WeightProgressCard({super.key});
 
@@ -21,6 +24,7 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
   WeightGoal? _goal;
   List<WeightEntry> _entries = [];
   bool _loaded = false;
+  _Range _range = _Range.all;
 
   @override
   void initState() {
@@ -107,6 +111,44 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
     }
   }
 
+  /// Start of the visible window for the selected range.
+  DateTime get _windowStart {
+    final now = DateTime.now();
+    switch (_range) {
+      case _Range.w1:
+        return now.subtract(const Duration(days: 7));
+      case _Range.m1:
+        return now.subtract(const Duration(days: 30));
+      case _Range.m3:
+        return now.subtract(const Duration(days: 90));
+      case _Range.ytd:
+        return DateTime(now.year, 1, 1);
+      case _Range.y1:
+        return now.subtract(const Duration(days: 365));
+      case _Range.all:
+        var start = _goal!.startDate;
+        if (_entries.isNotEmpty && _entries.first.date.isBefore(start)) {
+          start = _entries.first.date;
+        }
+        return start;
+    }
+  }
+
+  /// End of the visible window. "All" projects forward to the goal date so
+  /// the runway to the goal stays visible; other ranges end today.
+  DateTime get _windowEnd {
+    final now = DateTime.now();
+    if (_range == _Range.all) {
+      var end = _goal!.endDate;
+      if (_entries.isNotEmpty && _entries.last.date.isAfter(end)) {
+        end = _entries.last.date;
+      }
+      if (now.isAfter(end)) end = now;
+      return end;
+    }
+    return now;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_loaded) return const SizedBox.shrink();
@@ -151,9 +193,32 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
   Widget _buildChart(
       BuildContext context, WeightUnit unit, String unitLabel) {
     final goal = _goal!;
+    final windowStart = _windowStart;
+    final windowEnd = _windowEnd;
+    final visible = _entries
+        .where((e) =>
+            !e.date.isBefore(windowStart) && !e.date.isAfter(windowEnd))
+        .toList();
     final current = _entries.isNotEmpty
         ? _entries.last.weightLbs
         : goal.startWeightLbs;
+
+    // Change over the visible window (first → last visible weigh-in).
+    String? deltaText;
+    if (visible.length >= 2) {
+      final delta = _fromLbs(visible.last.weightLbs, unit) -
+          _fromLbs(visible.first.weightLbs, unit);
+      final sign = delta >= 0 ? '+' : '−';
+      const periods = {
+        _Range.w1: 'past week',
+        _Range.m1: 'past month',
+        _Range.m3: 'past 3 months',
+        _Range.ytd: 'this year',
+        _Range.y1: 'past year',
+        _Range.all: 'overall',
+      };
+      deltaText = '$sign${_fmt(delta.abs())} $unitLabel ${periods[_range]}';
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,14 +262,27 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
             ),
           ],
         ),
+        if (deltaText != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            deltaText,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _orange,
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         SizedBox(
-          height: 120,
+          height: 140,
           width: double.infinity,
           child: CustomPaint(
             painter: _WeightChartPainter(
               goal: goal,
-              entries: _entries,
+              entries: visible,
+              windowStart: windowStart,
+              windowEnd: windowEnd,
               toDisplay: (lbs) => _fromLbs(lbs, unit),
             ),
           ),
@@ -213,14 +291,43 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(_fmtDate(goal.startDate),
+            Text(_fmtDate(windowStart),
                 style: Theme.of(context).textTheme.labelSmall),
-            Text(_fmtDate(goal.endDate),
+            Text(_fmtDate(windowEnd),
                 style: Theme.of(context).textTheme.labelSmall),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (final r in _Range.values)
+              _RangePill(
+                label: _rangeLabel(r),
+                selected: r == _range,
+                onTap: () => setState(() => _range = r),
+              ),
           ],
         ),
       ],
     );
+  }
+
+  static String _rangeLabel(_Range r) {
+    switch (r) {
+      case _Range.w1:
+        return '1W';
+      case _Range.m1:
+        return '1M';
+      case _Range.m3:
+        return '3M';
+      case _Range.ytd:
+        return 'YTD';
+      case _Range.y1:
+        return '1Y';
+      case _Range.all:
+        return 'ALL';
+    }
   }
 
   static String _fmtDate(DateTime d) {
@@ -232,107 +339,180 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
   }
 }
 
+class _RangePill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RangePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x1AE8702A) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+            color: selected ? _orange : const Color(0xFF9E9E9E),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Chart painter ────────────────────────────────────────────────────────────
 
 class _WeightChartPainter extends CustomPainter {
   final WeightGoal goal;
-  final List<WeightEntry> entries;
+  final List<WeightEntry> entries; // already filtered to the window
+  final DateTime windowStart;
+  final DateTime windowEnd;
   final double Function(double lbs) toDisplay;
 
   _WeightChartPainter({
     required this.goal,
     required this.entries,
+    required this.windowStart,
+    required this.windowEnd,
     required this.toDisplay,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final startMs = goal.startDate.millisecondsSinceEpoch.toDouble();
-    var endMs = goal.endDate.millisecondsSinceEpoch.toDouble();
-    if (entries.isNotEmpty) {
-      endMs = math.max(
-          endMs, entries.last.date.millisecondsSinceEpoch.toDouble());
-    }
+    final startMs = windowStart.millisecondsSinceEpoch.toDouble();
+    var endMs = windowEnd.millisecondsSinceEpoch.toDouble();
     if (endMs <= startMs) endMs = startMs + 1;
 
-    final weights = [
-      goal.startWeightLbs,
-      goal.goalWeightLbs,
-      ...entries.map((e) => e.weightLbs),
-    ].map(toDisplay).toList();
+    // Goal trajectory interpolated at any time, clamped to the goal span.
+    final goalStartMs = goal.startDate.millisecondsSinceEpoch.toDouble();
+    final goalEndMs = goal.endDate.millisecondsSinceEpoch.toDouble();
+    double goalAt(double ms) {
+      if (goalEndMs <= goalStartMs) return goal.goalWeightLbs;
+      final t = ((ms - goalStartMs) / (goalEndMs - goalStartMs)).clamp(0.0, 1.0);
+      return goal.startWeightLbs +
+          (goal.goalWeightLbs - goal.startWeightLbs) * t;
+    }
+
+    // Visible segment of the goal line within the window.
+    final segStartMs = math.max(startMs, goalStartMs);
+    final segEndMs = math.min(endMs, goalEndMs);
+    final hasGoalSegment = segEndMs > segStartMs;
+
+    final weights = <double>[
+      ...entries.map((e) => toDisplay(e.weightLbs)),
+      if (hasGoalSegment) ...[
+        toDisplay(goalAt(segStartMs)),
+        toDisplay(goalAt(segEndMs)),
+      ],
+      if (entries.isEmpty && !hasGoalSegment)
+        toDisplay(goal.goalWeightLbs),
+    ];
     var minW = weights.reduce(math.min);
     var maxW = weights.reduce(math.max);
     final pad = math.max((maxW - minW) * 0.15, 1.0);
     minW -= pad;
     maxW += pad;
 
-    double x(DateTime d) =>
-        (d.millisecondsSinceEpoch - startMs) / (endMs - startMs) * size.width;
+    double xAt(double ms) => (ms - startMs) / (endMs - startMs) * size.width;
+    double x(DateTime d) => xAt(d.millisecondsSinceEpoch.toDouble());
     double y(double lbs) =>
-        size.height -
-        (toDisplay(lbs) - minW) / (maxW - minW) * size.height;
+        size.height - (toDisplay(lbs) - minW) / (maxW - minW) * size.height;
 
-    // Dashed goal line: start → goal/end date
-    _dashedLine(
-      canvas,
-      Offset(x(goal.startDate), y(goal.startWeightLbs)),
-      Offset(x(goal.endDate), y(goal.goalWeightLbs)),
-      Paint()
-        ..color = const Color(0xFFCCC8C2)
-        ..strokeWidth = 1.2
-        ..style = PaintingStyle.stroke,
-    );
-
-    // Goal end marker
-    canvas.drawCircle(
-      Offset(x(goal.endDate), y(goal.goalWeightLbs)),
-      3,
-      Paint()
-        ..color = const Color(0xFFCCC8C2)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
+    // Dashed goal trajectory across the visible window.
+    if (hasGoalSegment) {
+      _dashedLine(
+        canvas,
+        Offset(xAt(segStartMs), y(goalAt(segStartMs))),
+        Offset(xAt(segEndMs), y(goalAt(segEndMs))),
+        Paint()
+          ..color = const Color(0xFFCCC8C2)
+          ..strokeWidth = 1.2
+          ..style = PaintingStyle.stroke,
+      );
+      // Goal end marker when it's in view
+      if (goalEndMs >= startMs && goalEndMs <= endMs) {
+        canvas.drawCircle(
+          Offset(x(goal.endDate), y(goal.goalWeightLbs)),
+          3,
+          Paint()
+            ..color = const Color(0xFFCCC8C2)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2,
+        );
+      }
+    }
 
     if (entries.isEmpty) return;
 
-    // Actual weigh-in line
-    final line = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
+    // Actual weigh-in line — Robinhood-style orange with a soft fill below.
+    final linePath = Path();
     for (var i = 0; i < entries.length; i++) {
       final p = Offset(x(entries[i].date), y(entries[i].weightLbs));
       if (i == 0) {
-        path.moveTo(p.dx, p.dy);
+        linePath.moveTo(p.dx, p.dy);
       } else {
-        path.lineTo(p.dx, p.dy);
+        linePath.lineTo(p.dx, p.dy);
       }
     }
-    canvas.drawPath(path, line);
 
-    // Dots on each weigh-in; latest one slightly larger
-    for (var i = 0; i < entries.length; i++) {
-      final p = Offset(x(entries[i].date), y(entries[i].weightLbs));
-      canvas.drawCircle(
-          p, i == entries.length - 1 ? 4 : 2.5,
-          Paint()..color = const Color(0xFF1A1A1A));
-      if (i == entries.length - 1) {
-        canvas.drawCircle(p, 4,
-            Paint()
-              ..color = Colors.white
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5);
-      }
+    if (entries.length >= 2) {
+      final fillPath = Path.from(linePath)
+        ..lineTo(x(entries.last.date), size.height)
+        ..lineTo(x(entries.first.date), size.height)
+        ..close();
+      canvas.drawPath(
+        fillPath,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x33E8702A), Color(0x00E8702A)],
+          ).createShader(Offset.zero & size),
+      );
     }
+
+    canvas.drawPath(
+      linePath,
+      Paint()
+        ..color = _orange
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    // Latest weigh-in dot only (Robinhood keeps the line clean).
+    final last = Offset(x(entries.last.date), y(entries.last.weightLbs));
+    canvas.drawCircle(last, 4, Paint()..color = _orange);
+    canvas.drawCircle(
+        last,
+        4,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5);
   }
 
   void _dashedLine(Canvas canvas, Offset a, Offset b, Paint paint) {
     const dash = 5.0;
     const gap = 4.0;
     final total = (b - a).distance;
+    if (total == 0) return;
     final dir = (b - a) / total;
     var dist = 0.0;
     while (dist < total) {
@@ -344,7 +524,10 @@ class _WeightChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WeightChartPainter old) =>
-      old.goal != goal || old.entries != entries;
+      old.goal != goal ||
+      old.entries != entries ||
+      old.windowStart != windowStart ||
+      old.windowEnd != windowEnd;
 }
 
 // ─── Goal setup sheet ────────────────────────────────────────────────────────
