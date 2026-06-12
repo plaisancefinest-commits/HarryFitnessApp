@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/exercise.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
+import '../theme/app_colors.dart';
 
 /// Drill-down for a single planned exercise: prescription (sets, reps,
 /// weight, rest), notes, target muscles, and how-to instructions.
@@ -47,6 +48,7 @@ class ExerciseDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final exercise = planned.exercise;
     final unit = context.watch<WorkoutProvider>().weightUnit;
     final unitLabel = unit == WeightUnit.kg ? 'kg' : 'lbs';
@@ -64,7 +66,7 @@ class ExerciseDetailScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C2C2C)),
+          icon: Icon(Icons.arrow_back, color: c.ink),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(exercise.name,
@@ -104,7 +106,7 @@ class ExerciseDetailScreen extends StatelessWidget {
                       planned.notes!,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             fontStyle: FontStyle.italic,
-                            color: const Color(0xFF9E9E9E),
+                            color: c.faint,
                           ),
                     ),
                   ],

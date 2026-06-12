@@ -302,6 +302,83 @@ class DatabaseService {
         _weightEntriesKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
   }
 
+  // ─── Cardio & sauna logs (manual minute entries) ────────────────────────────
+
+  static const _cardioKey = 'cardio_entries';
+  static const _saunaKey = 'sauna_entries';
+
+  Future<List<Map<String, dynamic>>> _getMinuteEntries(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(raw));
+  }
+
+  Future<void> _addMinuteEntry(
+      String key, DateTime date, int minutes, String? label) async {
+    final entries = await _getMinuteEntries(key);
+    entries.add({
+      'date': date.toIso8601String(),
+      'minutes': minutes,
+      if (label != null && label.isNotEmpty) 'label': label,
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(entries));
+  }
+
+  /// Entries since Monday 00:00 of the current week, oldest first.
+  Future<List<Map<String, dynamic>>> _getEntriesThisWeek(String key) async {
+    final now = DateTime.now();
+    final startOfWeek = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final entries = await _getMinuteEntries(key);
+    return entries
+        .where((e) => DateTime.parse(e['date']).isAfter(startOfWeek))
+        .toList()
+      ..sort((a, b) => a['date'].compareTo(b['date']));
+  }
+
+  Future<void> addCardioEntry(DateTime date, int minutes, String? label) =>
+      _addMinuteEntry(_cardioKey, date, minutes, label);
+
+  Future<List<Map<String, dynamic>>> getCardioEntriesThisWeek() =>
+      _getEntriesThisWeek(_cardioKey);
+
+  Future<void> addSaunaEntry(DateTime date, int minutes, String? label) =>
+      _addMinuteEntry(_saunaKey, date, minutes, label);
+
+  Future<List<Map<String, dynamic>>> getSaunaEntriesThisWeek() =>
+      _getEntriesThisWeek(_saunaKey);
+
+  // ─── Day activity overrides (added/removed sauna/swim on the day of) ───────
+
+  static const _activityOverridesKey = 'activity_overrides';
+
+  /// Map of WorkoutDay.id → replacement activity list (serialized).
+  /// A day with no entry uses the program's planned activities.
+  Future<Map<String, List<PlannedActivity>>> getActivityOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_activityOverridesKey);
+    if (raw == null) return {};
+    return Map<String, dynamic>.from(jsonDecode(raw)).map((k, v) => MapEntry(
+          k,
+          (v as List)
+              .map((a) => activityFromJson(Map<String, dynamic>.from(a)))
+              .toList(),
+        ));
+  }
+
+  Future<void> saveActivityOverride(
+      String dayId, List<PlannedActivity> activities) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_activityOverridesKey);
+    final decoded = raw == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(jsonDecode(raw));
+    decoded[dayId] = activities.map(activityToJson).toList();
+    await prefs.setString(_activityOverridesKey, jsonEncode(decoded));
+  }
+
   // ─── Exercise overrides (user swapped an exercise in a program day) ────────
 
   static const _overridesKey = 'exercise_overrides';

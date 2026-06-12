@@ -20,6 +20,38 @@ class StretchStep {
   });
 }
 
+/// Non-lifting activities that can be attached to a workout day
+/// (planned in the program, or added/removed on the day of).
+enum ActivityType { sauna, swim, run, walk }
+
+class PlannedActivity {
+  final String id;
+  final ActivityType type;
+  final int minutes;
+
+  const PlannedActivity({
+    required this.id,
+    required this.type,
+    required this.minutes,
+  });
+
+  String get label {
+    switch (type) {
+      case ActivityType.sauna:
+        return 'Sauna';
+      case ActivityType.swim:
+        return 'Swim';
+      case ActivityType.run:
+        return 'Run';
+      case ActivityType.walk:
+        return 'Walk';
+    }
+  }
+
+  /// Sauna has its own weekly tracker; everything else is zone-2 cardio.
+  bool get countsAsCardio => type != ActivityType.sauna;
+}
+
 class Program {
   final String id;
   final String name;
@@ -43,6 +75,9 @@ class WorkoutDay {
   final List<StretchStep> warmUpStretches;
   final List<StretchStep> coolDownStretches;
 
+  /// Optional planned activities (sauna, swim, run, walk) for this day.
+  final List<PlannedActivity> activities;
+
   const WorkoutDay({
     required this.id,
     required this.name,
@@ -51,6 +86,7 @@ class WorkoutDay {
     required this.exercises,
     this.warmUpStretches = const [],
     this.coolDownStretches = const [],
+    this.activities = const [],
   });
 }
 

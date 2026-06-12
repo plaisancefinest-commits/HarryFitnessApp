@@ -16,7 +16,24 @@ Map<String, dynamic> _dayToJson(WorkoutDay d) => {
       'description': d.description,
       'estimated_minutes': d.estimatedMinutes,
       'exercises': d.exercises.map(_exerciseToJson).toList(),
+      'activities': d.activities.map(activityToJson).toList(),
     };
+
+Map<String, dynamic> activityToJson(PlannedActivity a) => {
+      'id': a.id,
+      'type': a.type.name,
+      'minutes': a.minutes,
+    };
+
+PlannedActivity activityFromJson(Map<String, dynamic> json) =>
+    PlannedActivity(
+      id: json['id'],
+      type: ActivityType.values.firstWhere(
+        (t) => t.name == json['type'],
+        orElse: () => ActivityType.walk,
+      ),
+      minutes: json['minutes'],
+    );
 
 Map<String, dynamic> _exerciseToJson(PlannedExercise pe) => {
       'id': pe.id,
@@ -45,6 +62,9 @@ WorkoutDay _dayFromJson(Map<String, dynamic> json) => WorkoutDay(
       estimatedMinutes: json['estimated_minutes'],
       exercises: (json['exercises'] as List)
           .map((e) => _exerciseFromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      activities: (json['activities'] as List? ?? [])
+          .map((a) => activityFromJson(Map<String, dynamic>.from(a)))
           .toList(),
     );
 

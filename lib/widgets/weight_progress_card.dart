@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 import '../models/body_weight.dart';
 import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
 
 const _kgFactor = 2.20462;
-const _orange = Color(0xFFE8702A);
 
 enum _Range { w1, m1, m3, ytd, y1, all }
 
@@ -57,7 +57,7 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
     final result = await showModalBottomSheet<WeightGoal>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF7F5F2),
+      backgroundColor: context.colors.bg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -80,9 +80,6 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
     final value = await showDialog<double>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text("Today's weight",
             style: Theme.of(context).textTheme.titleLarge),
         content: TextField(
@@ -181,10 +178,10 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
           style: OutlinedButton.styleFrom(
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)),
-            side: const BorderSide(color: Color(0xFFDDDAD6)),
+            side: BorderSide(color: context.colors.border),
           ),
-          child: const Text('Set Goal',
-              style: TextStyle(color: Color(0xFF2C2C2C))),
+          child: Text('Set Goal',
+              style: TextStyle(color: context.colors.ink)),
         ),
       ],
     );
@@ -192,6 +189,7 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
 
   Widget _buildChart(
       BuildContext context, WeightUnit unit, String unitLabel) {
+    final c = context.colors;
     final goal = _goal!;
     final windowStart = _windowStart;
     final windowEnd = _windowEnd;
@@ -231,14 +229,14 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
               children: [
                 GestureDetector(
                   onTap: () => _editGoal(unit),
-                  child: const Icon(Icons.edit_outlined,
-                      size: 16, color: Color(0xFF9E9E9E)),
+                  child: Icon(Icons.edit_outlined,
+                      size: 16, color: c.faint),
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
                   onTap: () => _logWeight(unit),
-                  child: const Icon(Icons.add_circle_outline,
-                      size: 18, color: Color(0xFF2C2C2C)),
+                  child: Icon(Icons.add_circle_outline,
+                      size: 18, color: c.ink),
                 ),
               ],
             ),
@@ -266,10 +264,10 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
           const SizedBox(height: 2),
           Text(
             deltaText,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: _orange,
+              color: c.data,
             ),
           ),
         ],
@@ -284,6 +282,10 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
               windowStart: windowStart,
               windowEnd: windowEnd,
               toDisplay: (lbs) => _fromLbs(lbs, unit),
+              lineColor: c.data,
+              glowColor: c.warm,
+              guideColor: c.borderStrong,
+              dotRingColor: c.card,
             ),
           ),
         ),
@@ -352,13 +354,14 @@ class _RangePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? const Color(0x1AE8702A) : Colors.transparent,
+          color: selected ? c.data.withValues(alpha: 0.10) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -367,7 +370,7 @@ class _RangePill extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.5,
-            color: selected ? _orange : const Color(0xFF9E9E9E),
+            color: selected ? c.data : c.faint,
           ),
         ),
       ),
@@ -383,6 +386,10 @@ class _WeightChartPainter extends CustomPainter {
   final DateTime windowStart;
   final DateTime windowEnd;
   final double Function(double lbs) toDisplay;
+  final Color lineColor;
+  final Color glowColor;
+  final Color guideColor;
+  final Color dotRingColor;
 
   _WeightChartPainter({
     required this.goal,
@@ -390,6 +397,10 @@ class _WeightChartPainter extends CustomPainter {
     required this.windowStart,
     required this.windowEnd,
     required this.toDisplay,
+    required this.lineColor,
+    required this.glowColor,
+    required this.guideColor,
+    required this.dotRingColor,
   });
 
   @override
@@ -440,7 +451,7 @@ class _WeightChartPainter extends CustomPainter {
         Offset(xAt(segStartMs), y(goalAt(segStartMs))),
         Offset(xAt(segEndMs), y(goalAt(segEndMs))),
         Paint()
-          ..color = const Color(0xFFCCC8C2)
+          ..color = guideColor
           ..strokeWidth = 1.2
           ..style = PaintingStyle.stroke,
       );
@@ -450,7 +461,7 @@ class _WeightChartPainter extends CustomPainter {
           Offset(x(goal.endDate), y(goal.goalWeightLbs)),
           3,
           Paint()
-            ..color = const Color(0xFFCCC8C2)
+            ..color = guideColor
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.2,
         );
@@ -478,10 +489,13 @@ class _WeightChartPainter extends CustomPainter {
       canvas.drawPath(
         fillPath,
         Paint()
-          ..shader = const LinearGradient(
+          ..shader = LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0x33E8702A), Color(0x00E8702A)],
+            colors: [
+              glowColor.withValues(alpha: 0.20),
+              glowColor.withValues(alpha: 0.0),
+            ],
           ).createShader(Offset.zero & size),
       );
     }
@@ -489,7 +503,7 @@ class _WeightChartPainter extends CustomPainter {
     canvas.drawPath(
       linePath,
       Paint()
-        ..color = _orange
+        ..color = lineColor
         ..strokeWidth = 2.2
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
@@ -498,12 +512,12 @@ class _WeightChartPainter extends CustomPainter {
 
     // Latest weigh-in dot only (Robinhood keeps the line clean).
     final last = Offset(x(entries.last.date), y(entries.last.weightLbs));
-    canvas.drawCircle(last, 4, Paint()..color = _orange);
+    canvas.drawCircle(last, 4, Paint()..color = lineColor);
     canvas.drawCircle(
         last,
         4,
         Paint()
-          ..color = Colors.white
+          ..color = dotRingColor
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5);
   }
@@ -527,7 +541,11 @@ class _WeightChartPainter extends CustomPainter {
       old.goal != goal ||
       old.entries != entries ||
       old.windowStart != windowStart ||
-      old.windowEnd != windowEnd;
+      old.windowEnd != windowEnd ||
+      old.lineColor != lineColor ||
+      old.glowColor != glowColor ||
+      old.guideColor != guideColor ||
+      old.dotRingColor != dotRingColor;
 }
 
 // ─── Goal setup sheet ────────────────────────────────────────────────────────

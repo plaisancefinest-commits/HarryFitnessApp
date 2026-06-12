@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
+import '../theme/app_colors.dart';
 import '../widgets/muscle_diagram.dart';
 
 class ActiveWorkoutScreen extends StatefulWidget {
@@ -60,13 +61,14 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         final exercise = provider.currentExercise;
         if (exercise == null) return const SizedBox.shrink();
 
+        final c = context.colors;
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             elevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.close, color: Color(0xFF2C2C2C)),
+              icon: Icon(Icons.close, color: c.ink),
               onPressed: () => Navigator.pop(context),
             ),
             title: Text(widget.day.name,
@@ -146,12 +148,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _LegendDot(color: const Color(0xFF1A1A1A)),
+                            _LegendDot(color: c.accent),
                             const SizedBox(width: 4),
                             Text('Primary',
                                 style: Theme.of(context).textTheme.labelSmall),
                             const SizedBox(width: 16),
-                            _LegendDot(color: const Color(0xFFAAAAAA)),
+                            _LegendDot(color: c.faint),
                             const SizedBox(width: 4),
                             Text('Secondary',
                                 style: Theme.of(context).textTheme.labelSmall),
@@ -232,7 +234,7 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Color(0xFF2C2C2C)),
+          icon: Icon(Icons.close, color: context.colors.ink),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -374,7 +376,7 @@ class _TargetInfo extends StatelessWidget {
             parts.join(' · '),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF2C2C2C),
+                  color: context.colors.ink,
                 ),
           ),
         if (exercise.notes != null) ...[
@@ -383,7 +385,7 @@ class _TargetInfo extends StatelessWidget {
             exercise.notes!,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontStyle: FontStyle.italic,
-                  color: const Color(0xFF6B6B6B),
+                  color: context.colors.muted,
                 ),
           ),
         ],
@@ -417,14 +419,14 @@ class _VideoLink extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.play_circle_outline,
-              size: 18, color: Color(0xFF6B6B6B)),
+          Icon(Icons.play_circle_outline,
+              size: 18, color: context.colors.muted),
           const SizedBox(width: 6),
           Text(
             url != null ? 'Watch video' : 'Find video on YouTube',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   decoration: TextDecoration.underline,
-                  decorationColor: const Color(0xFFCCC8C2),
+                  decorationColor: context.colors.borderStrong,
                 ),
           ),
         ],
@@ -449,7 +451,7 @@ class _NavArrow extends StatelessWidget {
       child: Icon(
         icon,
         size: 20,
-        color: enabled ? const Color(0xFF2C2C2C) : const Color(0xFFCCC8C2),
+        color: enabled ? context.colors.ink : context.colors.borderStrong,
       ),
     );
   }
@@ -465,12 +467,13 @@ class _UnitToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onToggle,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFEDEAE5),
+          color: c.fill,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -481,7 +484,7 @@ class _UnitToggle extends StatelessWidget {
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
-                    ?.copyWith(color: const Color(0xFF9E9E9E))),
+                    ?.copyWith(color: c.faint)),
             const SizedBox(width: 4),
             _UnitLabel(label: 'lbs', active: unit == WeightUnit.lbs),
           ],
@@ -503,7 +506,7 @@ class _UnitLabel extends StatelessWidget {
       style: TextStyle(
         fontSize: 13,
         fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-        color: active ? const Color(0xFF1A1A1A) : const Color(0xFF9E9E9E),
+        color: active ? context.colors.accent : context.colors.faint,
       ),
     );
   }
@@ -521,7 +524,7 @@ class _SideToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFEDEAE5),
+        color: context.colors.fill,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -549,13 +552,14 @@ class _SideBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? Colors.white : Colors.transparent,
+          color: active ? c.card : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           boxShadow: active
               ? [
@@ -571,7 +575,7 @@ class _SideBtn extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-            color: active ? const Color(0xFF1A1A1A) : const Color(0xFF9E9E9E),
+            color: active ? c.accent : c.faint,
           ),
         ),
       ),
@@ -654,7 +658,7 @@ class _SetTable extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFEDEAE5)),
+            Divider(height: 1, color: context.colors.fill),
             const SizedBox(height: 4),
             ...List.generate(drafts.length, (i) {
               return _SetRow(
@@ -734,8 +738,9 @@ class _SetRowState extends State<_SetRow> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final completed = widget.draft.completed as bool;
-    final bg = completed ? const Color(0xFFF7F5F2) : Colors.white;
+    final bg = completed ? c.bg : c.card;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
@@ -755,9 +760,7 @@ class _SetRowState extends State<_SetRow> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: completed
-                    ? const Color(0xFF9E9E9E)
-                    : const Color(0xFF2C2C2C),
+                color: completed ? c.faint : c.ink,
               ),
             ),
           ),
@@ -781,9 +784,7 @@ class _SetRowState extends State<_SetRow> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 14,
-                    color: completed
-                        ? const Color(0xFF9E9E9E)
-                        : const Color(0xFF2C2C2C))),
+                    color: completed ? c.faint : c.ink)),
           ),
           // Reps field
           Expanded(
@@ -806,9 +807,7 @@ class _SetRowState extends State<_SetRow> {
               constraints: const BoxConstraints(),
               icon: Icon(
                 completed ? Icons.check_circle : Icons.check_circle_outline,
-                color: completed
-                    ? const Color(0xFF1A1A1A)
-                    : const Color(0xFFCCC8C2),
+                color: completed ? c.accent : c.borderStrong,
                 size: 20,
               ),
               onPressed: completed
@@ -837,6 +836,7 @@ class _InlineField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return TextField(
       controller: controller,
       enabled: enabled,
@@ -846,31 +846,31 @@ class _InlineField extends StatelessWidget {
           TextInputType.numberWithOptions(decimal: decimal),
       style: TextStyle(
         fontSize: 14,
-        color: enabled ? const Color(0xFF2C2C2C) : const Color(0xFF9E9E9E),
+        color: enabled ? c.ink : c.faint,
       ),
       decoration: InputDecoration(
         hintText: decimal ? '0' : '—',
-        hintStyle: const TextStyle(color: Color(0xFFCCC8C2)),
+        hintStyle: TextStyle(color: c.borderStrong),
         isDense: true,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         filled: true,
-        fillColor: enabled ? Colors.white : const Color(0xFFF7F5F2),
+        fillColor: enabled ? c.card : c.bg,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFDDDAD6)),
+          borderSide: BorderSide(color: c.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFDDDAD6)),
+          borderSide: BorderSide(color: c.border),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFEDEAE5)),
+          borderSide: BorderSide(color: c.fill),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF1A1A1A)),
+          borderSide: BorderSide(color: c.accent),
         ),
       ),
     );
@@ -910,11 +910,11 @@ class _TimerCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   formatTime(seconds),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 40,
                     fontWeight: FontWeight.w300,
                     letterSpacing: -1,
-                    color: Color(0xFF2C2C2C),
+                    color: context.colors.ink,
                   ),
                 ),
               ],

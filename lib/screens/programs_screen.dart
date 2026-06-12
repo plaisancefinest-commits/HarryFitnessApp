@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../data/sample_programs.dart';
 import '../models/program.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
 import 'program_editor_screen.dart';
 
 /// "My Programs" tab: pick the active program, create your own, and
@@ -105,6 +106,7 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(24),
@@ -148,14 +150,14 @@ class _ProgramsScreenState extends State<ProgramsScreen> {
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: _createProgram,
-            icon: const Icon(Icons.add, size: 18, color: Color(0xFF2C2C2C)),
-            label: const Text('New Program',
-                style: TextStyle(color: Color(0xFF2C2C2C))),
+            icon: Icon(Icons.add, size: 18, color: c.ink),
+            label: Text('New Program',
+                style: TextStyle(color: c.ink)),
             style: OutlinedButton.styleFrom(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
-              side: const BorderSide(color: Color(0xFFDDDAD6)),
+              side: BorderSide(color: c.border),
             ),
           ),
         ],
@@ -181,6 +183,7 @@ class _ProgramCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final dayCount = program.days.length;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -196,9 +199,7 @@ class _ProgramCard extends StatelessWidget {
                     ? Icons.radio_button_checked
                     : Icons.radio_button_off,
                 size: 20,
-                color: selected
-                    ? const Color(0xFF1A1A1A)
-                    : const Color(0xFFCCC8C2),
+                color: selected ? c.accent : c.borderStrong,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -217,14 +218,14 @@ class _ProgramCard extends StatelessWidget {
               ),
               if (onEdit != null)
                 IconButton(
-                  icon: const Icon(Icons.edit_outlined,
-                      size: 18, color: Color(0xFF6B6B6B)),
+                  icon: Icon(Icons.edit_outlined,
+                      size: 18, color: c.muted),
                   onPressed: onEdit,
                 ),
               if (onDelete != null)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      size: 18, color: Color(0xFF6B6B6B)),
+                  icon: Icon(Icons.delete_outline,
+                      size: 18, color: c.muted),
                   onPressed: onDelete,
                 ),
             ],

@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'providers/theme_provider.dart';
 import 'providers/workout_provider.dart';
 import 'screens/home_screen.dart';
+import 'theme/app_colors.dart';
 
 void main() {
   // sqflite only ships native bindings for iOS/Android; on desktop we
@@ -25,44 +27,73 @@ class HarryFitnessApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => WorkoutProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'Harry Fitness',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(),
-        home: const HomeScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) => MaterialApp(
+          title: 'Harry Fitness',
+          debugShowCheckedModeBanner: false,
+          theme: _buildTheme(themeProvider.palette),
+          home: const HomeScreen(),
+        ),
       ),
     );
   }
 
-  ThemeData _buildTheme() {
-    const neutral100 = Color(0xFFF7F5F2);
-    const neutral200 = Color(0xFFEDEAE5);
-    const neutral800 = Color(0xFF2C2C2C);
-    const accent = Color(0xFF1A1A1A);
-
+  ThemeData _buildTheme(AppColors c) {
     return ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: neutral100,
-      colorScheme: const ColorScheme.light(
-        surface: neutral100,
-        onSurface: neutral800,
-        primary: accent,
-        onPrimary: Colors.white,
-        secondary: neutral200,
-        onSecondary: neutral800,
+      scaffoldBackgroundColor: c.bg,
+      extensions: [c],
+      colorScheme: ColorScheme.light(
+        surface: c.bg,
+        onSurface: c.ink,
+        primary: c.accent,
+        onPrimary: c.onAccent,
+        secondary: c.fill,
+        onSecondary: c.ink,
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: Colors.white,
+        color: c.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
+          side: c.cardOutline == Colors.transparent
+              ? BorderSide.none
+              : BorderSide(color: c.cardOutline, width: 1.5),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: c.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: c.cardOutline == Colors.transparent
+              ? BorderSide.none
+              : BorderSide(color: c.cardOutline, width: 1.5),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: c.ink),
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: c.ink,
+        selectionColor: c.fillDeep,
+        selectionHandleColor: c.ink,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        labelStyle: TextStyle(color: c.muted),
+        suffixStyle: TextStyle(color: c.muted),
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: c.borderStrong),
+        ),
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: c.ink),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: Colors.white,
+          backgroundColor: c.accent,
+          foregroundColor: c.onAccent,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -70,33 +101,33 @@ class HarryFitnessApp extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
       ),
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         displaySmall: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.w600,
-          color: neutral800,
+          color: c.ink,
           letterSpacing: -0.5,
         ),
         titleLarge: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: neutral800,
+          color: c.ink,
           letterSpacing: -0.3,
         ),
         titleMedium: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
-          color: neutral800,
+          color: c.ink,
         ),
         bodyMedium: TextStyle(
           fontSize: 14,
-          color: Color(0xFF6B6B6B),
+          color: c.muted,
           height: 1.5,
         ),
         labelSmall: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w500,
-          color: Color(0xFF9E9E9E),
+          color: c.faint,
           letterSpacing: 0.8,
         ),
       ),

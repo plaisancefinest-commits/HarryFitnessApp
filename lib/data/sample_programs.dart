@@ -102,6 +102,10 @@ final harryProgram = Program(
             instructions: '2 × 10 each side. Drive through the heel and hold the top '
                 'for 2 seconds. Keep your hips level — no rotation.'),
       ],
+      activities: const [
+        PlannedActivity(
+            id: 'h2_sauna', type: ActivityType.sauna, minutes: 15),
+      ],
     ),
     WorkoutDay(
       id: 'harry_day_4',
@@ -186,6 +190,10 @@ final harryProgram = Program(
             name: 'Single-Leg Glute Bridge', durationSeconds: 120,
             phase: StretchPhase.warmUp,
             instructions: '2 × 10 each side. Drive through the heel, hold the top 2 seconds.'),
+      ],
+      activities: const [
+        PlannedActivity(
+            id: 'h5_sauna', type: ActivityType.sauna, minutes: 15),
       ],
     ),
   ],

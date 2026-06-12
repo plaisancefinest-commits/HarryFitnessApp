@@ -5,6 +5,8 @@ import '../data/exercise_library.dart';
 import '../models/exercise.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
+import '../theme/app_colors.dart';
+import '../widgets/add_activity_dialog.dart';
 
 const _kgFactor = 2.20462;
 
@@ -43,10 +45,12 @@ class _ExerciseDraft {
 class _DayEditorScreenState extends State<DayEditorScreen> {
   static const _uuid = Uuid();
   late final List<_ExerciseDraft> _drafts;
+  late final List<PlannedActivity> _activities;
 
   @override
   void initState() {
     super.initState();
+    _activities = [...widget.day.activities];
     _drafts = widget.day.exercises
         .map((pe) => _ExerciseDraft(
               id: pe.id,
@@ -82,7 +86,18 @@ class _DayEditorScreenState extends State<DayEditorScreen> {
                 : _drafts[i].notes!.trim(),
           ),
       ],
+      activities: [..._activities],
     );
+  }
+
+  Future<void> _addActivity() async {
+    final result = await showDialog<PlannedActivity>(
+      context: context,
+      builder: (context) => const AddActivityDialog(),
+    );
+    if (result != null) {
+      setState(() => _activities.add(result));
+    }
   }
 
   void _pop() => Navigator.pop(context, _buildDay());
@@ -90,7 +105,7 @@ class _DayEditorScreenState extends State<DayEditorScreen> {
   Future<void> _addExercise() async {
     final picked = await showModalBottomSheet<Exercise>(
       context: context,
-      backgroundColor: const Color(0xFFF7F5F2),
+      backgroundColor: context.colors.bg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -110,6 +125,7 @@ class _DayEditorScreenState extends State<DayEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final unit = context.watch<WorkoutProvider>().weightUnit;
 
     return PopScope(
@@ -123,7 +139,7 @@ class _DayEditorScreenState extends State<DayEditorScreen> {
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Color(0xFF2C2C2C)),
+            icon: Icon(Icons.arrow_back, color: c.ink),
             onPressed: _pop,
           ),
           title: Text(widget.day.name,
@@ -151,14 +167,64 @@ class _DayEditorScreenState extends State<DayEditorScreen> {
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: _addExercise,
-              icon: const Icon(Icons.add, size: 18, color: Color(0xFF2C2C2C)),
-              label: const Text('Add Exercise',
-                  style: TextStyle(color: Color(0xFF2C2C2C))),
+              icon: Icon(Icons.add, size: 18, color: c.ink),
+              label: Text('Add Exercise',
+                  style: TextStyle(color: c.ink)),
               style: OutlinedButton.styleFrom(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: Color(0xFFDDDAD6)),
+                side: BorderSide(color: c.border),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('ACTIVITIES',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(letterSpacing: 1.0)),
+            const SizedBox(height: 8),
+            if (_activities.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Optional extras for this day — sauna, swim, run or walk.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ..._activities.map((a) => Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text('${a.label} · ${a.minutes} min',
+                              style:
+                                  Theme.of(context).textTheme.titleMedium),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline,
+                              size: 18, color: c.muted),
+                          tooltip: 'Remove activity',
+                          onPressed: () =>
+                              setState(() => _activities.remove(a)),
+                        ),
+                      ],
+                    ),
+                  ),
+                )),
+            OutlinedButton.icon(
+              onPressed: _addActivity,
+              icon: Icon(Icons.add, size: 18, color: c.ink),
+              label: Text('Add Activity',
+                  style: TextStyle(color: c.ink)),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(color: c.border),
               ),
             ),
           ],
@@ -244,8 +310,8 @@ class _ExerciseEditorCardState extends State<_ExerciseEditorCard> {
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      size: 18, color: Color(0xFF6B6B6B)),
+                  icon: Icon(Icons.delete_outline,
+                      size: 18, color: context.colors.muted),
                   tooltip: 'Remove exercise',
                   onPressed: widget.onRemove,
                 ),
@@ -335,6 +401,7 @@ class _NumberField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,24 +413,24 @@ class _NumberField extends StatelessWidget {
             onChanged: onChanged,
             textAlign: TextAlign.center,
             keyboardType: TextInputType.numberWithOptions(decimal: decimal),
-            style: const TextStyle(fontSize: 14, color: Color(0xFF2C2C2C)),
+            style: TextStyle(fontSize: 14, color: c.ink),
             decoration: InputDecoration(
               isDense: true,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: c.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFDDDAD6)),
+                borderSide: BorderSide(color: c.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFFDDDAD6)),
+                borderSide: BorderSide(color: c.border),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF1A1A1A)),
+                borderSide: BorderSide(color: c.accent),
               ),
             ),
           ),
@@ -431,8 +498,8 @@ class _ExercisePickerSheet extends StatelessWidget {
                   child: ListTile(
                     title: Text(e.name,
                         style: Theme.of(context).textTheme.titleMedium),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: Color(0xFFCCC8C2)),
+                    trailing: Icon(Icons.chevron_right,
+                        color: context.colors.borderStrong),
                     onTap: () => Navigator.pop(context, e),
                   ),
                 )),

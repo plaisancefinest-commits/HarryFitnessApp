@@ -5,6 +5,8 @@ import '../models/exercise.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
+import '../widgets/add_activity_dialog.dart';
 import 'exercise_detail_screen.dart';
 
 /// Full view of a workout day: every exercise with sets × reps and target
@@ -21,12 +23,57 @@ class WorkoutDetailScreen extends StatefulWidget {
 
 class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
   late List<PlannedExercise> _exercises;
+  late List<PlannedActivity> _activities;
 
   @override
   void initState() {
     super.initState();
     _exercises = [...widget.day.exercises]
       ..sort((a, b) => a.order.compareTo(b.order));
+    _activities = [...widget.day.activities];
+    _loadActivityOverride();
+  }
+
+  Future<void> _loadActivityOverride() async {
+    final overrides =
+        await DatabaseService.instance.getActivityOverrides();
+    final override = overrides[widget.day.id];
+    if (override != null && mounted) {
+      setState(() => _activities = override);
+    }
+  }
+
+  Future<void> _addActivity() async {
+    final result = await showDialog<PlannedActivity>(
+      context: context,
+      builder: (context) => const AddActivityDialog(),
+    );
+    if (result != null) {
+      setState(() => _activities.add(result));
+      await DatabaseService.instance
+          .saveActivityOverride(widget.day.id, _activities);
+    }
+  }
+
+  Future<void> _removeActivity(PlannedActivity a) async {
+    setState(() => _activities.remove(a));
+    await DatabaseService.instance
+        .saveActivityOverride(widget.day.id, _activities);
+  }
+
+  Future<void> _logActivity(PlannedActivity a) async {
+    final db = DatabaseService.instance;
+    if (a.countsAsCardio) {
+      await db.addCardioEntry(DateTime.now(), a.minutes, a.label);
+    } else {
+      await db.addSaunaEntry(DateTime.now(), a.minutes, a.label);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(a.countsAsCardio
+              ? '${a.label} · ${a.minutes} min logged to zone-2 cardio.'
+              : 'Sauna · ${a.minutes} min logged.')));
+    }
   }
 
   void _onReorder(int oldIndex, int newIndex) {
@@ -91,7 +138,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
 
     final picked = await showModalBottomSheet<Exercise>(
       context: context,
-      backgroundColor: const Color(0xFFF7F5F2),
+      backgroundColor: context.colors.bg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -117,6 +164,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final unit = context.watch<WorkoutProvider>().weightUnit;
     final exercises = _exercises;
 
@@ -126,7 +174,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C2C2C)),
+          icon: Icon(Icons.arrow_back, color: c.ink),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('${widget.day.name} · ${widget.day.description}',
@@ -157,14 +205,26 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
             ),
           ],
         ),
-        footer: widget.day.coolDownStretches.isNotEmpty
-            ? _PhaseCard(
+        footer: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ActivitiesCard(
+              activities: _activities,
+              onAdd: _addActivity,
+              onRemove: _removeActivity,
+              onLog: _logActivity,
+            ),
+            if (widget.day.coolDownStretches.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _PhaseCard(
                 label: 'COOL DOWN',
                 lines: widget.day.coolDownStretches
                     .map((s) => '${s.name} · ${s.durationSeconds}s')
                     .toList(),
-              )
-            : null,
+              ),
+            ],
+          ],
+        ),
         children: [
           for (var i = 0; i < exercises.length; i++)
             Card(
@@ -185,10 +245,10 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                     children: [
                       ReorderableDragStartListener(
                         index: i,
-                        child: const Padding(
-                          padding: EdgeInsets.only(right: 12),
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 12),
                           child: Icon(Icons.drag_indicator,
-                              color: Color(0xFFCCC8C2), size: 20),
+                              color: c.borderStrong, size: 20),
                         ),
                       ),
                       Expanded(
@@ -212,7 +272,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                                     .bodyMedium
                                     ?.copyWith(
                                       fontStyle: FontStyle.italic,
-                                      color: const Color(0xFF9E9E9E),
+                                      color: c.faint,
                                     ),
                               ),
                             ],
@@ -220,19 +280,108 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.swap_horiz,
-                            color: Color(0xFF6B6B6B), size: 20),
+                        icon: Icon(Icons.swap_horiz,
+                            color: c.muted, size: 20),
                         tooltip: 'Swap exercise',
                         onPressed: () => _swapExercise(exercises[i]),
                       ),
-                      const Icon(Icons.chevron_right,
-                          color: Color(0xFFCCC8C2)),
+                      Icon(Icons.chevron_right, color: c.borderStrong),
                     ],
                   ),
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActivitiesCard extends StatelessWidget {
+  final List<PlannedActivity> activities;
+  final VoidCallback onAdd;
+  final ValueChanged<PlannedActivity> onRemove;
+  final ValueChanged<PlannedActivity> onLog;
+
+  const _ActivitiesCard({
+    required this.activities,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onLog,
+  });
+
+  static IconData _icon(ActivityType t) {
+    switch (t) {
+      case ActivityType.sauna:
+        return Icons.hot_tub_outlined;
+      case ActivityType.swim:
+        return Icons.pool_outlined;
+      case ActivityType.run:
+        return Icons.directions_run;
+      case ActivityType.walk:
+        return Icons.directions_walk;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('ACTIVITIES',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelSmall
+                        ?.copyWith(letterSpacing: 1.0)),
+                GestureDetector(
+                  onTap: onAdd,
+                  child: Icon(Icons.add_circle_outline,
+                      size: 18, color: c.ink),
+                ),
+              ],
+            ),
+            if (activities.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Nothing extra today — tap + to add a sauna, swim, run or walk.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ...activities.map((a) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Icon(_icon(a.type), size: 20, color: c.muted),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('${a.label} · ${a.minutes} min',
+                            style: Theme.of(context).textTheme.titleMedium),
+                      ),
+                      TextButton(
+                        onPressed: () => onLog(a),
+                        child: Text('Log',
+                            style: TextStyle(
+                                color: c.data,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, size: 18, color: c.faint),
+                        tooltip: 'Remove for today',
+                        onPressed: () => onRemove(a),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }
@@ -323,7 +472,7 @@ class _ExerciseTile extends StatelessWidget {
         title: Text(exercise.name,
             style: Theme.of(context).textTheme.titleMedium),
         trailing:
-            const Icon(Icons.chevron_right, color: Color(0xFFCCC8C2)),
+            Icon(Icons.chevron_right, color: context.colors.borderStrong),
         onTap: () => Navigator.pop(context, exercise),
       ),
     );

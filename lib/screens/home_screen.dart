@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../data/sample_programs.dart';
 import '../models/program.dart';
+import '../providers/theme_provider.dart';
 import '../services/database_service.dart';
 import '../data/exercise_library.dart';
+import '../theme/app_colors.dart';
+import '../widgets/cardio_card.dart';
 import '../widgets/weight_progress_card.dart';
 import 'active_workout_screen.dart';
 import 'history_screen.dart';
@@ -29,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _ => const HistoryScreen(),
       },
       bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
+        backgroundColor: context.colors.card,
         elevation: 0,
         selectedIndex: _selectedTab,
         onDestinationSelected: (i) => setState(() => _selectedTab = i),
@@ -141,6 +145,33 @@ class _DashboardTabState extends State<_DashboardTab> {
     return _suggestedDay;
   }
 
+  Future<void> _pickTheme(BuildContext context) async {
+    final provider = context.read<ThemeProvider>();
+    final choice = await showDialog<AppThemeChoice>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('Theme', style: Theme.of(context).textTheme.titleLarge),
+        children: [
+          _ThemeOption(
+            label: 'Cream',
+            subtitle: 'Light neutral · orange',
+            palette: AppColors.cream,
+            selected: provider.choice == AppThemeChoice.cream,
+            onTap: () => Navigator.pop(context, AppThemeChoice.cream),
+          ),
+          _ThemeOption(
+            label: 'Carabinero',
+            subtitle: 'Shell red · black outline',
+            palette: AppColors.carabinero,
+            selected: provider.choice == AppThemeChoice.carabinero,
+            onTap: () => Navigator.pop(context, AppThemeChoice.carabinero),
+          ),
+        ],
+      ),
+    );
+    if (choice != null) await provider.setChoice(choice);
+  }
+
   @override
   Widget build(BuildContext context) {
     final program = _program;
@@ -157,15 +188,38 @@ class _DashboardTabState extends State<_DashboardTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            Text('Good morning', style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 4),
-            Text('Harry', style: Theme.of(context).textTheme.displaySmall),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Good morning',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      const SizedBox(height: 4),
+                      Text('Harry',
+                          style: Theme.of(context).textTheme.displaySmall),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _pickTheme(context),
+                  icon: Icon(Icons.palette_outlined,
+                      size: 22, color: context.colors.muted),
+                  tooltip: 'Theme',
+                ),
+              ],
+            ),
             const SizedBox(height: 32),
 
             _ThisWeekCard(completedCount: _completedThisWeek),
             const SizedBox(height: 16),
 
             const WeightProgressCard(),
+            const SizedBox(height: 16),
+
+            const CardioCard(),
             const SizedBox(height: 16),
 
             _DaySelector(
@@ -251,7 +305,8 @@ class _DaySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF1A1A1A);
+    final c = context.colors;
+    final accent = c.accent;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -263,10 +318,10 @@ class _DaySelector extends StatelessWidget {
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: day.id == selectedDayId ? accent : Colors.white,
+                color: day.id == selectedDayId ? accent : c.card,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: day.id == selectedDayId ? accent : const Color(0xFFDDDAD6),
+                  color: day.id == selectedDayId ? accent : c.border,
                 ),
               ),
               child: Text(
@@ -274,7 +329,7 @@ class _DaySelector extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: day.id == selectedDayId ? Colors.white : const Color(0xFF6B6B6B),
+                  color: day.id == selectedDayId ? c.onAccent : c.muted,
                 ),
               ),
             ),
@@ -339,15 +394,84 @@ class _NextDayCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    side: const BorderSide(color: Color(0xFFDDDAD6)),
+                    side: BorderSide(color: context.colors.border),
                   ),
-                  child: const Text('View Full Workout', style: TextStyle(color: Color(0xFF2C2C2C))),
+                  child: Text('View Full Workout', style: TextStyle(color: context.colors.ink)),
                 ),
               ],
             ),
           ],
         ),
         ),
+      ),
+    );
+  }
+}
+
+class _ThemeOption extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final AppColors palette;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ThemeOption({
+    required this.label,
+    required this.subtitle,
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return SimpleDialogOption(
+      onPressed: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      child: Row(
+        children: [
+          // Mini swatch previewing the palette.
+          Container(
+            width: 44,
+            height: 32,
+            decoration: BoxDecoration(
+              color: palette.bg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: c.borderStrong),
+            ),
+            padding: const EdgeInsets.all(5),
+            child: Container(
+              decoration: BoxDecoration(
+                color: palette.card,
+                borderRadius: BorderRadius.circular(4),
+                border: palette.cardOutline == Colors.transparent
+                    ? null
+                    : Border.all(color: palette.cardOutline),
+              ),
+              alignment: Alignment.center,
+              child: Container(
+                width: 14,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: palette.warm,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.titleMedium),
+                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          if (selected) Icon(Icons.check, size: 18, color: c.ink),
+        ],
       ),
     );
   }

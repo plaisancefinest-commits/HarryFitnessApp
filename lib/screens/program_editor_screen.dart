@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/program.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
 import 'day_editor_screen.dart';
 
 /// Edit a custom program: rename it, add/remove/rename days, and open
@@ -145,13 +146,14 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF2C2C2C)),
+          icon: Icon(Icons.arrow_back, color: c.ink),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text('Edit Program',
@@ -207,19 +209,19 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              size: 18, color: Color(0xFF6B6B6B)),
+                          icon: Icon(Icons.edit_outlined,
+                              size: 18, color: c.muted),
                           tooltip: 'Rename day',
                           onPressed: () => _renameDay(day),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              size: 18, color: Color(0xFF6B6B6B)),
+                          icon: Icon(Icons.delete_outline,
+                              size: 18, color: c.muted),
                           tooltip: 'Remove day',
                           onPressed: () => _removeDay(day),
                         ),
-                        const Icon(Icons.chevron_right,
-                            color: Color(0xFFCCC8C2)),
+                        Icon(Icons.chevron_right,
+                            color: c.borderStrong),
                       ],
                     ),
                   ),
@@ -228,14 +230,14 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _addDay,
-            icon: const Icon(Icons.add, size: 18, color: Color(0xFF2C2C2C)),
-            label: const Text('Add Day',
-                style: TextStyle(color: Color(0xFF2C2C2C))),
+            icon: Icon(Icons.add, size: 18, color: c.ink),
+            label: Text('Add Day',
+                style: TextStyle(color: c.ink)),
             style: OutlinedButton.styleFrom(
               shape:
                   RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
-              side: const BorderSide(color: Color(0xFFDDDAD6)),
+              side: BorderSide(color: c.border),
             ),
           ),
         ],

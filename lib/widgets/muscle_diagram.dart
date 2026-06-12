@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../models/exercise.dart';
+import '../theme/app_colors.dart';
 
 enum DiagramSide { front, back }
 
@@ -19,6 +20,7 @@ class MuscleDiagram extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return SizedBox(
       height: 200,
       child: CustomPaint(
@@ -26,6 +28,11 @@ class MuscleDiagram extends StatelessWidget {
           primaryMuscles: primaryMuscles,
           secondaryMuscles: secondaryMuscles,
           side: side,
+          primary: c.accent,
+          secondary: c.faint,
+          base: c.fill,
+          outline: c.borderStrong,
+          frame: c.fillDeep,
         ),
         child: const SizedBox.expand(),
       ),
@@ -40,11 +47,11 @@ class _BodyPainter extends CustomPainter {
   final List<MuscleGroup> secondaryMuscles;
   final DiagramSide side;
 
-  static const _primary = Color(0xFF1A1A1A);
-  static const _secondary = Color(0xFFAAAAAA);
-  static const _base = Color(0xFFE8E4DF);
-  static const _outline = Color(0xFFCCC8C2);
-  static const _frame = Color(0xFFE0DCD6);
+  final Color _primary;
+  final Color _secondary;
+  final Color _base;
+  final Color _outline;
+  final Color _frame;
 
   // Limb angles (degrees from straight down; positive swings left on screen)
   static const _armAngle = 75.0;
@@ -54,7 +61,16 @@ class _BodyPainter extends CustomPainter {
     required this.primaryMuscles,
     required this.secondaryMuscles,
     required this.side,
-  });
+    required Color primary,
+    required Color secondary,
+    required Color base,
+    required Color outline,
+    required Color frame,
+  })  : _primary = primary,
+        _secondary = secondary,
+        _base = base,
+        _outline = outline,
+        _frame = frame;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -210,5 +226,10 @@ class _BodyPainter extends CustomPainter {
   bool shouldRepaint(_BodyPainter old) =>
       old.primaryMuscles != primaryMuscles ||
       old.secondaryMuscles != secondaryMuscles ||
-      old.side != side;
+      old.side != side ||
+      old._primary != _primary ||
+      old._secondary != _secondary ||
+      old._base != _base ||
+      old._outline != _outline ||
+      old._frame != _frame;
 }
