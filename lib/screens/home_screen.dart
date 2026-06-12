@@ -6,6 +6,7 @@ import '../data/exercise_library.dart';
 import '../widgets/weight_progress_card.dart';
 import 'active_workout_screen.dart';
 import 'history_screen.dart';
+import 'programs_screen.dart';
 import 'workout_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -22,7 +23,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: _selectedTab == 0 ? const _DashboardTab() : const HistoryScreen(),
+      body: switch (_selectedTab) {
+        0 => const _DashboardTab(),
+        1 => const ProgramsScreen(),
+        _ => const HistoryScreen(),
+      },
       bottomNavigationBar: NavigationBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -30,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => setState(() => _selectedTab = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.fitness_center_outlined), selectedIcon: Icon(Icons.fitness_center), label: 'Programs'),
           NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
         ],
       ),
@@ -51,7 +57,7 @@ class _DashboardTabState extends State<_DashboardTab> {
   String? _lastCompletedDayId;
   String? _overrideDayId; // user tapped a pill; null = follow rotation
 
-  final program = samplePrograms.first;
+  Program? _program;
 
   @override
   void initState() {
@@ -61,13 +67,25 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   Future<void> _loadStats() async {
     final db = DatabaseService.instance;
-    await _applyExerciseOverrides(db);
+
+    // Resolve the active program: built-in or custom, falling back to the
+    // first built-in if the selection is missing (e.g. deleted program).
+    final selectedId = await db.getSelectedProgramId();
+    final custom = await db.getCustomPrograms();
+    final all = [...samplePrograms, ...custom];
+    final program = all.firstWhere(
+      (p) => p.id == selectedId,
+      orElse: () => samplePrograms.first,
+    );
+
+    await _applyExerciseOverrides(db, program);
     final count = await db.getSessionsThisWeek();
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
     final recs = hasHistory ? await db.getRestRecommendations(program.id) : <String, int>{};
     final lastDayId = await db.getLastCompletedDayId(program.id);
     if (mounted) {
       setState(() {
+        _program = program;
         _completedThisWeek = count;
         _isFirstWeek = !hasHistory;
         _restRecommendations = recs;
@@ -78,7 +96,8 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   /// Re-apply any exercise swaps the user saved in previous sessions.
-  Future<void> _applyExerciseOverrides(DatabaseService db) async {
+  Future<void> _applyExerciseOverrides(
+      DatabaseService db, Program program) async {
     final overrides = await db.getExerciseOverrides();
     if (overrides.isEmpty) return;
     for (final day in program.days) {
@@ -95,7 +114,7 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   /// Rotation: the day after the last completed one, wrapping (A→B→C→A).
   WorkoutDay get _suggestedDay {
-    final days = program.days;
+    final days = _program!.days;
     final lastIndex = days.indexWhere((d) => d.id == _lastCompletedDayId);
     if (lastIndex == -1) return days.first;
     return days[(lastIndex + 1) % days.length];
@@ -103,7 +122,7 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   WorkoutDay get _nextDay {
     if (_overrideDayId != null) {
-      return program.days.firstWhere(
+      return _program!.days.firstWhere(
         (d) => d.id == _overrideDayId,
         orElse: () => _suggestedDay,
       );
@@ -113,6 +132,11 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   @override
   Widget build(BuildContext context) {
+    final program = _program;
+    if (program == null || program.days.isEmpty) {
+      // Still loading, or the selected custom program has no days yet.
+      return const SizedBox.shrink();
+    }
     final nextDay = _nextDay;
 
     return SafeArea(
@@ -217,7 +241,9 @@ class _DaySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const accent = Color(0xFF1A1A1A);
-    return Row(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
       children: [
         for (final day in days) ...[
           GestureDetector(
@@ -245,6 +271,7 @@ class _DaySelector extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ],
+      ),
     );
   }
 }

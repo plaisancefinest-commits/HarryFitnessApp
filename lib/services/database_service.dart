@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../data/program_json.dart';
 import '../models/body_weight.dart';
+import '../models/program.dart';
 import '../models/workout_session.dart';
 
 /// Unified persistence layer.
@@ -318,6 +320,49 @@ class DatabaseService {
     final overrides = await getExerciseOverrides();
     overrides[plannedExerciseId] = exerciseId;
     await prefs.setString(_overridesKey, jsonEncode(overrides));
+  }
+
+  // ─── Custom programs ────────────────────────────────────────────────────────
+
+  static const _customProgramsKey = 'custom_programs';
+  static const _selectedProgramKey = 'selected_program_id';
+
+  Future<List<Program>> getCustomPrograms() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_customProgramsKey);
+    if (raw == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(raw))
+        .map(programFromJson)
+        .toList();
+  }
+
+  /// Inserts or replaces (matched by program id).
+  Future<void> saveCustomProgram(Program program) async {
+    final programs = await getCustomPrograms();
+    programs.removeWhere((p) => p.id == program.id);
+    programs.add(program);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _customProgramsKey, jsonEncode(programs.map(programToJson).toList()));
+  }
+
+  Future<void> deleteCustomProgram(String programId) async {
+    final programs = await getCustomPrograms();
+    programs.removeWhere((p) => p.id == programId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _customProgramsKey, jsonEncode(programs.map(programToJson).toList()));
+  }
+
+  /// Id of the program shown on the home dashboard (built-in or custom).
+  Future<String?> getSelectedProgramId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_selectedProgramKey);
+  }
+
+  Future<void> saveSelectedProgramId(String programId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_selectedProgramKey, programId);
   }
 
   Future<String> getWeightUnit() async {
