@@ -1,9 +1,19 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'providers/workout_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() {
+  // sqflite only ships native bindings for iOS/Android; on desktop we
+  // swap in the FFI implementation so the database works everywhere.
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   runApp(const HarryFitnessApp());
 }
 

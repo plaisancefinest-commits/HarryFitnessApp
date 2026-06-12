@@ -38,6 +38,7 @@ dependencies:
   shared_preferences: ^2.3.5 # simple key-value storage
   vibration: ^2.0.0         # haptic feedback on timer zero
   uuid: ^4.5.1              # generate unique IDs
+  sqflite_common_ffi: ^2.3.4 # sqflite backend for desktop (Windows/Linux/macOS)
 
 dev_dependencies:
   flutter_test:

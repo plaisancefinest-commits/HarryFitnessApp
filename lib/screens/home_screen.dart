@@ -45,6 +45,8 @@ class _DashboardTabState extends State<_DashboardTab> {
   int _completedThisWeek = 0;
   bool _isFirstWeek = true;
   Map<String, int> _restRecommendations = {};
+  String? _lastCompletedDayId;
+  String? _overrideDayId; // user tapped a pill; null = follow rotation
 
   final program = samplePrograms.first;
 
@@ -59,18 +61,34 @@ class _DashboardTabState extends State<_DashboardTab> {
     final count = await db.getSessionsThisWeek();
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
     final recs = hasHistory ? await db.getRestRecommendations(program.id) : <String, int>{};
+    final lastDayId = await db.getLastCompletedDayId(program.id);
     if (mounted) {
       setState(() {
         _completedThisWeek = count;
         _isFirstWeek = !hasHistory;
         _restRecommendations = recs;
+        _lastCompletedDayId = lastDayId;
+        _overrideDayId = null; // a finished workout resets any manual pick
       });
     }
   }
 
+  /// Rotation: the day after the last completed one, wrapping (A→B→C→A).
+  WorkoutDay get _suggestedDay {
+    final days = program.days;
+    final lastIndex = days.indexWhere((d) => d.id == _lastCompletedDayId);
+    if (lastIndex == -1) return days.first;
+    return days[(lastIndex + 1) % days.length];
+  }
+
   WorkoutDay get _nextDay {
-    // In a real app this would track which day was last done
-    return program.days.first;
+    if (_overrideDayId != null) {
+      return program.days.firstWhere(
+        (d) => d.id == _overrideDayId,
+        orElse: () => _suggestedDay,
+      );
+    }
+    return _suggestedDay;
   }
 
   @override
@@ -92,8 +110,19 @@ class _DashboardTabState extends State<_DashboardTab> {
             _ThisWeekCard(completedCount: _completedThisWeek),
             const SizedBox(height: 16),
 
+            _DaySelector(
+              days: program.days,
+              selectedDayId: nextDay.id,
+              suggestedDayId: _suggestedDay.id,
+              onSelect: (id) => setState(() {
+                _overrideDayId = id == _suggestedDay.id ? null : id;
+              }),
+            ),
+            const SizedBox(height: 12),
+
             _NextDayCard(
               day: nextDay,
+              isSuggested: nextDay.id == _suggestedDay.id,
               onStart: () async {
                 await Navigator.push(
                   context,
@@ -140,10 +169,59 @@ class _ThisWeekCard extends StatelessWidget {
   }
 }
 
+class _DaySelector extends StatelessWidget {
+  final List<WorkoutDay> days;
+  final String selectedDayId;
+  final String suggestedDayId;
+  final ValueChanged<String> onSelect;
+
+  const _DaySelector({
+    required this.days,
+    required this.selectedDayId,
+    required this.suggestedDayId,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF1A1A1A);
+    return Row(
+      children: [
+        for (final day in days) ...[
+          GestureDetector(
+            onTap: () => onSelect(day.id),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: day.id == selectedDayId ? accent : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: day.id == selectedDayId ? accent : const Color(0xFFDDDAD6),
+                ),
+              ),
+              child: Text(
+                day.name,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: day.id == selectedDayId ? Colors.white : const Color(0xFF6B6B6B),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+}
+
 class _NextDayCard extends StatelessWidget {
   final WorkoutDay day;
+  final bool isSuggested;
   final VoidCallback onStart;
-  const _NextDayCard({required this.day, required this.onStart});
+  const _NextDayCard({required this.day, required this.isSuggested, required this.onStart});
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +232,7 @@ class _NextDayCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'NEXT DAY',
+              isSuggested ? 'UP NEXT' : 'YOUR PICK',
               style: Theme.of(context).textTheme.labelSmall,
             ),
             const SizedBox(height: 6),

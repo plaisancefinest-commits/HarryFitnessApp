@@ -249,6 +249,16 @@ class DatabaseService {
     return sessions.any((s) => s.programId == programId);
   }
 
+  /// The workout_day_id of the most recently completed session for [programId],
+  /// or null if no session has been completed yet.
+  Future<String?> getLastCompletedDayId(String programId) async {
+    final sessions = await getCompletedSessions(); // already sorted date DESC
+    for (final s in sessions) {
+      if (s.programId == programId) return s.workoutDayId;
+    }
+    return null;
+  }
+
   Future<String> getWeightUnit() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_weightUnitKey) ?? 'lbs';
