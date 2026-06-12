@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/workout_session.dart';
+import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 import '../data/exercise_library.dart';
 import '../data/sample_programs.dart';
@@ -88,6 +90,12 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Weights are stored in lbs; display in the user's chosen unit.
+    final unit = context.watch<WorkoutProvider>().weightUnit;
+    final unitLabel = unit == WeightUnit.kg ? 'kg' : 'lbs';
+    double displayWeight(double lbs) =>
+        unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+
     // Group sets by exercise
     final Map<String, List<SetLog>> byExercise = {};
     for (final s in session.sets) {
@@ -129,10 +137,13 @@ class _SessionCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         const SizedBox(width: 16),
-                        Text(
-                          '${s.weight.toStringAsFixed(s.weight % 1 == 0 ? 0 : 1)} lbs × ${s.reps} reps',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
+                        Builder(builder: (context) {
+                          final w = displayWeight(s.weight);
+                          return Text(
+                            '${w.toStringAsFixed(w % 1 == 0 ? 0 : 1)} $unitLabel × ${s.reps} reps',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          );
+                        }),
                         if (s.notes != null) ...[
                           const SizedBox(width: 12),
                           Expanded(

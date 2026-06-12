@@ -259,6 +259,26 @@ class DatabaseService {
     return null;
   }
 
+  // ─── Exercise overrides (user swapped an exercise in a program day) ────────
+
+  static const _overridesKey = 'exercise_overrides';
+
+  /// Map of PlannedExercise.id → substituted Exercise.id
+  Future<Map<String, String>> getExerciseOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_overridesKey);
+    if (raw == null) return {};
+    return Map<String, String>.from(jsonDecode(raw));
+  }
+
+  Future<void> saveExerciseOverride(
+      String plannedExerciseId, String exerciseId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final overrides = await getExerciseOverrides();
+    overrides[plannedExerciseId] = exerciseId;
+    await prefs.setString(_overridesKey, jsonEncode(overrides));
+  }
+
   Future<String> getWeightUnit() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_weightUnitKey) ?? 'lbs';

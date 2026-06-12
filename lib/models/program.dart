@@ -8,11 +8,15 @@ class StretchStep {
   final String name;
   final int durationSeconds;
   final StretchPhase phase;
+  final String? instructions;
+  final String? videoUrl;
 
   const StretchStep({
     required this.name,
     required this.durationSeconds,
     required this.phase,
+    this.instructions,
+    this.videoUrl,
   });
 }
 
@@ -52,7 +56,7 @@ class WorkoutDay {
 
 class PlannedExercise {
   final String id;
-  final Exercise exercise;
+  Exercise exercise; // mutable so the user can swap in a different exercise
   final int sets;
   final int reps;
   int order;

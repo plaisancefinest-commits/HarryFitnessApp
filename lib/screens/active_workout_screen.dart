@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/program.dart';
 import '../providers/workout_provider.dart';
 import '../widgets/muscle_diagram.dart';
@@ -87,9 +88,26 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 Text(exercise.exercise.name,
                     style: Theme.of(context).textTheme.displaySmall),
                 const SizedBox(height: 4),
-                Text(
-                  '${provider.currentExerciseIndex + 1} of ${widget.day.exercises.length}',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                Row(
+                  children: [
+                    _NavArrow(
+                      icon: Icons.chevron_left,
+                      enabled: provider.currentExerciseIndex > 0,
+                      onTap: provider.goToPreviousExercise,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        '${provider.currentExerciseIndex + 1} of ${widget.day.exercises.length}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    _NavArrow(
+                      icon: Icons.chevron_right,
+                      enabled: !provider.isLastExercise,
+                      onTap: provider.goToNextExercise,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
 
@@ -165,6 +183,12 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                   const SizedBox(height: 16),
                 ],
 
+                _VideoLink(
+                  name: exercise.exercise.name,
+                  url: exercise.exercise.videoUrl,
+                ),
+                const SizedBox(height: 16),
+
                 // Set table
                 _SetTable(
                   exercise: exercise,
@@ -231,6 +255,31 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 'Hold for ${stretch.durationSeconds} seconds',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              if (stretch.instructions != null) ...[
+                const SizedBox(height: 20),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('How to perform',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(letterSpacing: 1.0)),
+                        const SizedBox(height: 8),
+                        Text(
+                          stretch.instructions!,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              _VideoLink(name: stretch.name, url: stretch.videoUrl),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -274,6 +323,69 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Video Link ──────────────────────────────────────────────────────────────
+
+/// Opens the configured video for an exercise/stretch, or falls back to a
+/// YouTube search for the exercise name + "form" when no link is set.
+class _VideoLink extends StatelessWidget {
+  final String name;
+  final String? url;
+
+  const _VideoLink({required this.name, this.url});
+
+  Future<void> _open() async {
+    final uri = url != null
+        ? Uri.parse(url!)
+        : Uri.https('www.youtube.com', '/results',
+            {'search_query': '$name form'});
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _open,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_circle_outline,
+              size: 18, color: Color(0xFF6B6B6B)),
+          const SizedBox(width: 6),
+          Text(
+            url != null ? 'Watch video' : 'Find video on YouTube',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: const Color(0xFFCCC8C2),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Nav Arrow ────────────────────────────────────────────────────────────────
+
+class _NavArrow extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _NavArrow({required this.icon, required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Icon(
+        icon,
+        size: 20,
+        color: enabled ? const Color(0xFF2C2C2C) : const Color(0xFFCCC8C2),
       ),
     );
   }
@@ -482,6 +594,9 @@ class _SetTable extends StatelessWidget {
             const SizedBox(height: 4),
             ...List.generate(drafts.length, (i) {
               return _SetRow(
+                // Key includes the unit so rows rebuild their text fields
+                // with converted values when the kg/lbs toggle is used.
+                key: ValueKey('${exercise.exercise.id}_${i}_$unit'),
                 setNumber: i + 1,
                 draft: drafts[i],
                 disabled: isResting,
@@ -491,6 +606,8 @@ class _SetTable extends StatelessWidget {
                     provider.updateDraftReps(exercise.exercise.id, i, v),
                 onComplete: () =>
                     provider.completeSetByIndex(exercise.exercise.id, i),
+                onUncomplete: () =>
+                    provider.uncompleteSetByIndex(exercise.exercise.id, i),
               );
             }),
           ],
@@ -509,14 +626,17 @@ class _SetRow extends StatefulWidget {
   final ValueChanged<double> onWeightChanged;
   final ValueChanged<int> onRepsChanged;
   final VoidCallback onComplete;
+  final VoidCallback onUncomplete;
 
   const _SetRow({
+    super.key,
     required this.setNumber,
     required this.draft,
     required this.disabled,
     required this.onWeightChanged,
     required this.onRepsChanged,
     required this.onComplete,
+    required this.onUncomplete,
   });
 
   @override
@@ -614,19 +734,23 @@ class _SetRowState extends State<_SetRow> {
               },
             ),
           ),
-          // Complete button
+          // Complete / uncheck button
           SizedBox(
             width: 40,
-            child: completed
-                ? const Icon(Icons.check_circle,
-                    color: Color(0xFF1A1A1A), size: 20)
-                : IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.check_circle_outline,
-                        color: Color(0xFFCCC8C2), size: 20),
-                    onPressed: widget.disabled ? null : widget.onComplete,
-                  ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: Icon(
+                completed ? Icons.check_circle : Icons.check_circle_outline,
+                color: completed
+                    ? const Color(0xFF1A1A1A)
+                    : const Color(0xFFCCC8C2),
+                size: 20,
+              ),
+              onPressed: completed
+                  ? widget.onUncomplete
+                  : (widget.disabled ? null : widget.onComplete),
+            ),
           ),
         ],
       ),

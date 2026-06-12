@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../models/exercise.dart';
 
@@ -31,6 +33,8 @@ class MuscleDiagram extends StatelessWidget {
   }
 }
 
+/// Draws the figure in a Vitruvian Man pose: arms outstretched to the
+/// sides, legs apart, framed by a faint circle.
 class _BodyPainter extends CustomPainter {
   final List<MuscleGroup> primaryMuscles;
   final List<MuscleGroup> secondaryMuscles;
@@ -40,6 +44,11 @@ class _BodyPainter extends CustomPainter {
   static const _secondary = Color(0xFFAAAAAA);
   static const _base = Color(0xFFE8E4DF);
   static const _outline = Color(0xFFCCC8C2);
+  static const _frame = Color(0xFFE0DCD6);
+
+  // Limb angles (degrees from straight down; positive swings left on screen)
+  static const _armAngle = 75.0;
+  static const _legAngle = 14.0;
 
   _BodyPainter({
     required this.primaryMuscles,
@@ -49,138 +58,93 @@ class _BodyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Arms span wide, so scale on both axes.
+    final s = math.min(size.height / 200.0, size.width / 170.0);
     final cx = size.width / 2;
-    final scale = size.height / 200.0;
 
-    if (side == DiagramSide.front) {
-      _drawFront(canvas, cx, scale);
+    // Vitruvian framing circle, centered on the torso
+    canvas.drawCircle(
+      Offset(cx, 88 * s),
+      82 * s,
+      Paint()
+        ..color = _frame
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+
+    _drawBody(canvas, cx, s);
+  }
+
+  void _drawBody(Canvas canvas, double cx, double s) {
+    final isFront = side == DiagramSide.front;
+
+    // Head + neck
+    _drawOval(canvas, cx, 14 * s, 10 * s, 12 * s, _base);
+    _drawRect(canvas, cx - 4 * s, 24 * s, 8 * s, 7 * s, _base);
+
+    // Torso base
+    _drawRect(canvas, cx - 22 * s, 31 * s, 44 * s, 52 * s, _base);
+
+    if (isFront) {
+      // Chest (upper torso)
+      _drawRect(canvas, cx - 22 * s, 31 * s, 44 * s, 24 * s,
+          _colorFor(MuscleGroup.chest));
+      // Core / abs (lower torso)
+      _drawRect(canvas, cx - 14 * s, 57 * s, 28 * s, 26 * s,
+          _colorFor(MuscleGroup.core));
     } else {
-      _drawBack(canvas, cx, scale);
+      // Back / lats
+      _drawRect(canvas, cx - 22 * s, 31 * s, 44 * s, 52 * s,
+          _colorFor(MuscleGroup.back));
     }
-  }
 
-  void _drawFront(Canvas canvas, double cx, double s) {
-    // Head
-    _drawOval(canvas, cx, 12 * s, 10 * s, 12 * s, _base, _outline);
+    // Shoulders
+    _drawOval(canvas, cx - 26 * s, 36 * s, 9 * s, 9 * s,
+        _colorFor(MuscleGroup.shoulders));
+    _drawOval(canvas, cx + 26 * s, 36 * s, 9 * s, 9 * s,
+        _colorFor(MuscleGroup.shoulders));
 
-    // Neck
-    _drawRect(canvas, cx - 4 * s, 22 * s, 8 * s, 8 * s, _base, _outline);
+    // Arms — outstretched. Front shows biceps, back shows triceps.
+    final upperArm =
+        _colorFor(isFront ? MuscleGroup.biceps : MuscleGroup.triceps);
+    final forearm = _colorFor(MuscleGroup.forearms);
 
-    // Torso
-    _drawRect(canvas, cx - 22 * s, 30 * s, 44 * s, 55 * s, _base, _outline);
+    // Left arm
+    final lForearmPivot = _drawLimb(
+        canvas, cx - 30 * s, 38 * s, 9 * s, 23 * s, _armAngle, upperArm);
+    _drawLimb(canvas, lForearmPivot.dx, lForearmPivot.dy, 8 * s, 21 * s,
+        _armAngle, forearm);
 
-    // Chest region (upper torso)
-    _drawRect(
-      canvas, cx - 22 * s, 30 * s, 44 * s, 25 * s,
-      _colorFor(MuscleGroup.chest), _outline,
-    );
+    // Right arm (mirrored)
+    final rForearmPivot = _drawLimb(
+        canvas, cx + 30 * s, 38 * s, 9 * s, 23 * s, -_armAngle, upperArm);
+    _drawLimb(canvas, rForearmPivot.dx, rForearmPivot.dy, 8 * s, 21 * s,
+        -_armAngle, forearm);
 
-    // Core / abs (lower torso)
-    _drawRect(
-      canvas, cx - 14 * s, 58 * s, 28 * s, 27 * s,
-      _colorFor(MuscleGroup.core), _outline,
-    );
+    // Glutes (back view only)
+    if (!isFront) {
+      _drawRect(canvas, cx - 21 * s, 84 * s, 42 * s, 16 * s,
+          _colorFor(MuscleGroup.glutes));
+    }
 
-    // Left shoulder
-    _drawOval(canvas, cx - 28 * s, 35 * s, 10 * s, 14 * s,
-        _colorFor(MuscleGroup.shoulders), _outline);
+    // Legs — apart. Front shows quads, back shows hamstrings.
+    final thigh =
+        _colorFor(isFront ? MuscleGroup.quads : MuscleGroup.hamstrings);
+    final calf = _colorFor(MuscleGroup.calves);
+    final thighTop = (isFront ? 84 : 100) * s;
+    final thighLen = (isFront ? 42 : 32) * s;
 
-    // Right shoulder
-    _drawOval(canvas, cx + 28 * s, 35 * s, 10 * s, 14 * s,
-        _colorFor(MuscleGroup.shoulders), _outline);
+    // Left leg
+    final lCalfPivot = _drawLimb(
+        canvas, cx - 12 * s, thighTop, 16 * s, thighLen, _legAngle, thigh);
+    _drawLimb(canvas, lCalfPivot.dx, lCalfPivot.dy, 12 * s, 30 * s,
+        _legAngle, calf);
 
-    // Left upper arm (biceps)
-    _drawRect(canvas, cx - 36 * s, 46 * s, 10 * s, 22 * s,
-        _colorFor(MuscleGroup.biceps), _outline);
-
-    // Right upper arm (biceps)
-    _drawRect(canvas, cx + 26 * s, 46 * s, 10 * s, 22 * s,
-        _colorFor(MuscleGroup.biceps), _outline);
-
-    // Left forearm
-    _drawRect(canvas, cx - 37 * s, 70 * s, 9 * s, 20 * s,
-        _colorFor(MuscleGroup.forearms), _outline);
-
-    // Right forearm
-    _drawRect(canvas, cx + 28 * s, 70 * s, 9 * s, 20 * s,
-        _colorFor(MuscleGroup.forearms), _outline);
-
-    // Left quads
-    _drawRect(canvas, cx - 21 * s, 87 * s, 18 * s, 40 * s,
-        _colorFor(MuscleGroup.quads), _outline);
-
-    // Right quads
-    _drawRect(canvas, cx + 3 * s, 87 * s, 18 * s, 40 * s,
-        _colorFor(MuscleGroup.quads), _outline);
-
-    // Left calves
-    _drawRect(canvas, cx - 20 * s, 132 * s, 16 * s, 30 * s,
-        _colorFor(MuscleGroup.calves), _outline);
-
-    // Right calves
-    _drawRect(canvas, cx + 4 * s, 132 * s, 16 * s, 30 * s,
-        _colorFor(MuscleGroup.calves), _outline);
-  }
-
-  void _drawBack(Canvas canvas, double cx, double s) {
-    // Head
-    _drawOval(canvas, cx, 12 * s, 10 * s, 12 * s, _base, _outline);
-
-    // Neck
-    _drawRect(canvas, cx - 4 * s, 22 * s, 8 * s, 8 * s, _base, _outline);
-
-    // Torso
-    _drawRect(canvas, cx - 22 * s, 30 * s, 44 * s, 55 * s, _base, _outline);
-
-    // Back / lats region
-    _drawRect(
-      canvas, cx - 22 * s, 30 * s, 44 * s, 55 * s,
-      _colorFor(MuscleGroup.back), _outline,
-    );
-
-    // Left shoulder (rear)
-    _drawOval(canvas, cx - 28 * s, 35 * s, 10 * s, 14 * s,
-        _colorFor(MuscleGroup.shoulders), _outline);
-
-    // Right shoulder (rear)
-    _drawOval(canvas, cx + 28 * s, 35 * s, 10 * s, 14 * s,
-        _colorFor(MuscleGroup.shoulders), _outline);
-
-    // Left upper arm (triceps)
-    _drawRect(canvas, cx - 36 * s, 46 * s, 10 * s, 22 * s,
-        _colorFor(MuscleGroup.triceps), _outline);
-
-    // Right upper arm (triceps)
-    _drawRect(canvas, cx + 26 * s, 46 * s, 10 * s, 22 * s,
-        _colorFor(MuscleGroup.triceps), _outline);
-
-    // Left forearm
-    _drawRect(canvas, cx - 37 * s, 70 * s, 9 * s, 20 * s,
-        _colorFor(MuscleGroup.forearms), _outline);
-
-    // Right forearm
-    _drawRect(canvas, cx + 28 * s, 70 * s, 9 * s, 20 * s,
-        _colorFor(MuscleGroup.forearms), _outline);
-
-    // Glutes
-    _drawRect(canvas, cx - 21 * s, 85 * s, 42 * s, 22 * s,
-        _colorFor(MuscleGroup.glutes), _outline);
-
-    // Left hamstrings
-    _drawRect(canvas, cx - 21 * s, 108 * s, 18 * s, 34 * s,
-        _colorFor(MuscleGroup.hamstrings), _outline);
-
-    // Right hamstrings
-    _drawRect(canvas, cx + 3 * s, 108 * s, 18 * s, 34 * s,
-        _colorFor(MuscleGroup.hamstrings), _outline);
-
-    // Left calves
-    _drawRect(canvas, cx - 20 * s, 145 * s, 16 * s, 26 * s,
-        _colorFor(MuscleGroup.calves), _outline);
-
-    // Right calves
-    _drawRect(canvas, cx + 4 * s, 145 * s, 16 * s, 26 * s,
-        _colorFor(MuscleGroup.calves), _outline);
+    // Right leg (mirrored)
+    final rCalfPivot = _drawLimb(
+        canvas, cx + 12 * s, thighTop, 16 * s, thighLen, -_legAngle, thigh);
+    _drawLimb(canvas, rCalfPivot.dx, rCalfPivot.dy, 12 * s, 30 * s,
+        -_legAngle, calf);
   }
 
   Color _colorFor(MuscleGroup group) {
@@ -189,8 +153,33 @@ class _BodyPainter extends CustomPainter {
     return _base;
   }
 
+  /// Draws a limb segment of [w]×[h] hanging from pivot (x, y), rotated
+  /// [angleDeg] degrees from straight down (positive = leftward on screen).
+  /// Returns the pivot point for the next segment (the limb's far end).
+  Offset _drawLimb(Canvas canvas, double x, double y, double w, double h,
+      double angleDeg, Color fill) {
+    final a = angleDeg * math.pi / 180.0;
+    canvas.save();
+    canvas.translate(x, y);
+    canvas.rotate(a);
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(-w / 2, 0, w, h),
+      Radius.circular(w / 2),
+    );
+    canvas.drawRRect(rect, Paint()..color = fill);
+    canvas.drawRRect(
+        rect,
+        Paint()
+          ..color = _outline
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.5);
+    canvas.restore();
+    // Far end of the segment in canvas coordinates
+    return Offset(x - h * math.sin(a), y + h * math.cos(a));
+  }
+
   void _drawRect(Canvas canvas, double x, double y, double w, double h,
-      Color fill, Color stroke) {
+      Color fill) {
     final rect = RRect.fromRectAndRadius(
       Rect.fromLTWH(x, y, w, h),
       const Radius.circular(4),
@@ -199,20 +188,20 @@ class _BodyPainter extends CustomPainter {
     canvas.drawRRect(
         rect,
         Paint()
-          ..color = stroke
+          ..color = _outline
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.5);
   }
 
   void _drawOval(Canvas canvas, double cx, double cy, double rx, double ry,
-      Color fill, Color stroke) {
+      Color fill) {
     final rect = Rect.fromCenter(
         center: Offset(cx, cy), width: rx * 2, height: ry * 2);
     canvas.drawOval(rect, Paint()..color = fill);
     canvas.drawOval(
         rect,
         Paint()
-          ..color = stroke
+          ..color = _outline
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.5);
   }

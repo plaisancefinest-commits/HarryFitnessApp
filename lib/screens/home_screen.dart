@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../data/sample_programs.dart';
 import '../models/program.dart';
 import '../services/database_service.dart';
+import '../data/exercise_library.dart';
 import 'active_workout_screen.dart';
 import 'history_screen.dart';
+import 'workout_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -58,6 +60,7 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   Future<void> _loadStats() async {
     final db = DatabaseService.instance;
+    await _applyExerciseOverrides(db);
     final count = await db.getSessionsThisWeek();
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
     final recs = hasHistory ? await db.getRestRecommendations(program.id) : <String, int>{};
@@ -70,6 +73,22 @@ class _DashboardTabState extends State<_DashboardTab> {
         _lastCompletedDayId = lastDayId;
         _overrideDayId = null; // a finished workout resets any manual pick
       });
+    }
+  }
+
+  /// Re-apply any exercise swaps the user saved in previous sessions.
+  Future<void> _applyExerciseOverrides(DatabaseService db) async {
+    final overrides = await db.getExerciseOverrides();
+    if (overrides.isEmpty) return;
+    for (final day in program.days) {
+      for (final pe in day.exercises) {
+        final overrideId = overrides[pe.id];
+        if (overrideId != null && overrideId != pe.exercise.id) {
+          final replacement =
+              exerciseLibrary.where((e) => e.id == overrideId).firstOrNull;
+          if (replacement != null) pe.exercise = replacement;
+        }
+      }
     }
   }
 
@@ -123,6 +142,15 @@ class _DashboardTabState extends State<_DashboardTab> {
             _NextDayCard(
               day: nextDay,
               isSuggested: nextDay.id == _suggestedDay.id,
+              onViewFull: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => WorkoutDetailScreen(day: nextDay),
+                  ),
+                );
+                setState(() {}); // reflect any exercise swaps
+              },
               onStart: () async {
                 await Navigator.push(
                   context,
@@ -221,7 +249,13 @@ class _NextDayCard extends StatelessWidget {
   final WorkoutDay day;
   final bool isSuggested;
   final VoidCallback onStart;
-  const _NextDayCard({required this.day, required this.isSuggested, required this.onStart});
+  final VoidCallback onViewFull;
+  const _NextDayCard({
+    required this.day,
+    required this.isSuggested,
+    required this.onStart,
+    required this.onViewFull,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -256,7 +290,7 @@ class _NextDayCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton(
-                  onPressed: () {},
+                  onPressed: onViewFull,
                   style: OutlinedButton.styleFrom(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

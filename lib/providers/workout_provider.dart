@@ -113,12 +113,11 @@ class WorkoutProvider extends ChangeNotifier {
     final factor =
         newUnit == WeightUnit.kg ? 1 / 2.20462 : 2.20462;
 
-    // Convert all uncompleted draft weights
+    // Convert all draft weights. Drafts are display values in the current
+    // unit; saved SetLogs are always normalized to lbs at completion time.
     for (final drafts in _drafts.values) {
       for (final d in drafts) {
-        if (!d.completed) {
-          d.weight = double.parse((d.weight * factor).toStringAsFixed(1));
-        }
+        d.weight = double.parse((d.weight * factor).toStringAsFixed(1));
       }
     }
 
@@ -200,8 +199,9 @@ class WorkoutProvider extends ChangeNotifier {
       // Done with warm-up → start workout
       _state = WorkoutState.active;
     } else {
-      // Done with cool-down → complete
-      _state = WorkoutState.complete;
+      // Done with cool-down → save and complete
+      _finishWorkout();
+      return;
     }
 
     notifyListeners();
@@ -219,28 +219,54 @@ class WorkoutProvider extends ChangeNotifier {
 
     draft.completed = true;
 
+    // Always store weight in lbs; display converts to the chosen unit.
+    final weightLbs = _weightUnit == WeightUnit.kg
+        ? double.parse((draft.weight * 2.20462).toStringAsFixed(1))
+        : draft.weight;
+
     _session!.sets.add(SetLog(
       id: _uuid.v4(),
       exerciseId: exerciseId,
       setNumber: setIndex + 1,
-      weight: draft.weight,
+      weight: weightLbs,
       reps: draft.reps,
       completedAt: DateTime.now(),
     ));
 
-    // Check if all sets for this exercise are done
-    final allDone = drafts.every((d) => d.completed);
-    if (allDone) {
-      _restStartTime = DateTime.now();
-      _state = WorkoutState.resting;
+    // Rest after every completed set
+    _currentSet = setIndex + 1;
+    _restStartTime = DateTime.now();
+    _state = WorkoutState.resting;
 
-      if (_timerMode == TimerMode.countdown) {
-        _timerSeconds = recommendedRest[exerciseId] ?? 90;
-        _startCountdown();
-      } else {
-        _timerSeconds = 0;
-        _startStopwatch();
-      }
+    if (_timerMode == TimerMode.countdown) {
+      _timerSeconds = recommendedRest[exerciseId] ?? 90;
+      _startCountdown();
+    } else {
+      _timerSeconds = 0;
+      _startStopwatch();
+    }
+
+    notifyListeners();
+  }
+
+  /// Uncheck a completed set so it can be edited and re-completed.
+  void uncompleteSetByIndex(String exerciseId, int setIndex) {
+    if (_session == null) return;
+    final drafts = _drafts[exerciseId];
+    if (drafts == null || setIndex >= drafts.length) return;
+
+    final draft = drafts[setIndex];
+    if (!draft.completed) return;
+
+    draft.completed = false;
+    _session!.sets.removeWhere(
+        (s) => s.exerciseId == exerciseId && s.setNumber == setIndex + 1);
+
+    // If we were resting after this set, cancel the rest
+    if (_state == WorkoutState.resting) {
+      _timer?.cancel();
+      _restStartTime = null;
+      _state = WorkoutState.active;
     }
 
     notifyListeners();
@@ -259,7 +285,38 @@ class WorkoutProvider extends ChangeNotifier {
       _restStartTime = null;
     }
 
-    _advanceToNextExercise();
+    // Only move on once every set of this exercise is done; otherwise
+    // stay here for the next set.
+    final drafts = _drafts[currentExercise?.exercise.id];
+    final allDone = drafts != null && drafts.every((d) => d.completed);
+    if (allDone) {
+      _advanceToNextExercise();
+    } else {
+      _state = WorkoutState.active;
+      notifyListeners();
+    }
+  }
+
+  // ─── Manual Exercise Navigation ───────────────────────────────────────────
+
+  void goToPreviousExercise() {
+    if (_currentExerciseIndex <= 0 || _state == WorkoutState.stretching) return;
+    _timer?.cancel();
+    _restStartTime = null;
+    _currentExerciseIndex--;
+    _currentSet = 1;
+    _state = WorkoutState.active;
+    notifyListeners();
+  }
+
+  void goToNextExercise() {
+    if (isLastExercise || _state == WorkoutState.stretching) return;
+    _timer?.cancel();
+    _restStartTime = null;
+    _currentExerciseIndex++;
+    _currentSet = 1;
+    _state = WorkoutState.active;
+    notifyListeners();
   }
 
   void _advanceToNextExercise() {
