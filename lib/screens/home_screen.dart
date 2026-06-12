@@ -3,6 +3,7 @@ import '../data/sample_programs.dart';
 import '../models/program.dart';
 import '../services/database_service.dart';
 import '../data/exercise_library.dart';
+import '../widgets/weight_progress_card.dart';
 import 'active_workout_screen.dart';
 import 'history_screen.dart';
 import 'workout_detail_screen.dart';
@@ -115,7 +116,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     final nextDay = _nextDay;
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,6 +128,9 @@ class _DashboardTabState extends State<_DashboardTab> {
             const SizedBox(height: 32),
 
             _ThisWeekCard(completedCount: _completedThisWeek),
+            const SizedBox(height: 16),
+
+            const WeightProgressCard(),
             const SizedBox(height: 16),
 
             _DaySelector(

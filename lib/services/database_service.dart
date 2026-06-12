@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../models/body_weight.dart';
 import '../models/workout_session.dart';
 
 /// Unified persistence layer.
@@ -257,6 +258,46 @@ class DatabaseService {
       if (s.programId == programId) return s.workoutDayId;
     }
     return null;
+  }
+
+  // ─── Body-weight goal & weigh-ins ───────────────────────────────────────────
+
+  static const _weightGoalKey = 'weight_goal';
+  static const _weightEntriesKey = 'weight_entries';
+
+  Future<WeightGoal?> getWeightGoal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_weightGoalKey);
+    if (raw == null) return null;
+    return WeightGoal.fromJson(jsonDecode(raw));
+  }
+
+  Future<void> saveWeightGoal(WeightGoal goal) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_weightGoalKey, jsonEncode(goal.toJson()));
+  }
+
+  /// Weigh-ins sorted by date ascending.
+  Future<List<WeightEntry>> getWeightEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_weightEntriesKey);
+    if (raw == null) return [];
+    final list = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    return list.map(WeightEntry.fromJson).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+  }
+
+  /// Adds a weigh-in; replaces any existing entry on the same calendar day.
+  Future<void> addWeightEntry(WeightEntry entry) async {
+    final entries = await getWeightEntries();
+    entries.removeWhere((e) =>
+        e.date.year == entry.date.year &&
+        e.date.month == entry.date.month &&
+        e.date.day == entry.date.day);
+    entries.add(entry);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _weightEntriesKey, jsonEncode(entries.map((e) => e.toJson()).toList()));
   }
 
   // ─── Exercise overrides (user swapped an exercise in a program day) ────────
