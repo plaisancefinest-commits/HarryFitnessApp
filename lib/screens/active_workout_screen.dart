@@ -4,18 +4,21 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/program.dart';
+import '../models/recovery_check.dart';
 import '../models/week_rating.dart';
 import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/muscle_diagram.dart';
 import 'active_workout_overview_screen.dart';
+import 'recovery_check_screen.dart';
 
 class ActiveWorkoutScreen extends StatefulWidget {
   final Program program;
   final WorkoutDay day;
   final bool isFirstWeek;
   final Map<String, int>? previousRestAverages;
+  final Map<String, dynamic>? resumeData;
 
   const ActiveWorkoutScreen({
     super.key,
@@ -23,6 +26,7 @@ class ActiveWorkoutScreen extends StatefulWidget {
     required this.day,
     required this.isFirstWeek,
     this.previousRestAverages,
+    this.resumeData,
   });
 
   @override
@@ -40,12 +44,21 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     super.initState();
     _pageController = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<WorkoutProvider>().startSession(
-            program: widget.program,
-            day: widget.day,
-            isFirstWeek: widget.isFirstWeek,
-            previousRestAverages: widget.previousRestAverages,
-          );
+      final provider = context.read<WorkoutProvider>();
+      if (widget.resumeData != null) {
+        provider.resumeFromJson(
+          program: widget.program,
+          day: widget.day,
+          data: widget.resumeData!,
+        );
+      } else {
+        provider.startSession(
+          program: widget.program,
+          day: widget.day,
+          isFirstWeek: widget.isFirstWeek,
+          previousRestAverages: widget.previousRestAverages,
+        );
+      }
     });
   }
 
@@ -516,6 +529,11 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               // Week rating prompt (Thu–Sun, if not already rated)
               if (programId != null)
                 _WeekRatingPrompt(programId: programId),
+              // End-of-week recovery (after last workout of the week)
+              if (programId != null)
+                _EndOfWeekRecoveryPrompt(
+                  program: widget.program,
+                ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -652,6 +670,116 @@ class _WeekRatingPromptState extends State<_WeekRatingPrompt> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── End-of-Week Recovery Prompt ──────────────────────────────────────────────
+
+/// Shown on the complete screen after the last workout of the week.
+class _EndOfWeekRecoveryPrompt extends StatefulWidget {
+  final Program program;
+  const _EndOfWeekRecoveryPrompt({required this.program});
+
+  @override
+  State<_EndOfWeekRecoveryPrompt> createState() =>
+      _EndOfWeekRecoveryPromptState();
+}
+
+class _EndOfWeekRecoveryPromptState extends State<_EndOfWeekRecoveryPrompt> {
+  bool _loading = true;
+  bool _show = false;
+  bool _completed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final db = DatabaseService.instance;
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+
+    // Count completed sessions this week
+    final sessions = await db.getCompletedSessions();
+    final thisWeek =
+        sessions.where((s) => s.date.isAfter(monday)).length;
+    final totalDays = widget.program.days.length;
+
+    // Only show if this was the last workout of the week
+    if (thisWeek < totalDays) {
+      if (mounted) setState(() { _loading = false; _show = false; });
+      return;
+    }
+
+    // Check if already submitted
+    final existing = await db.getRecoveryCheckForWeek(
+        widget.program.id, monday, false);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _show = existing == null;
+      });
+    }
+  }
+
+  Future<void> _open() async {
+    final muscles = muscleGroupsForProgram(widget.program.days);
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecoveryCheckScreen(
+          programId: widget.program.id,
+          muscleGroups: muscles,
+          isPreWeek: false,
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      setState(() => _completed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || !_show || _completed) return const SizedBox.shrink();
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _open,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(Icons.healing, color: c.data, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('End-of-Week Recovery',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text('All workouts done! How do your muscles feel?',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: c.muted)),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: c.borderStrong),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -978,7 +1106,10 @@ class _SetTable extends StatelessWidget {
                 key: ValueKey('${exercise.exercise.id}_${i}_$unit'),
                 setNumber: i + 1,
                 draft: drafts[i],
+                displayWeight: provider.getDisplayWeight(
+                    exercise.exercise.id, i),
                 disabled: isResting,
+                canRemove: drafts.length > 1,
                 onWeightChanged: (v) => provider.updateDraftWeight(
                     exercise.exercise.id, i, v),
                 onRepsChanged: (v) =>
@@ -987,8 +1118,24 @@ class _SetTable extends StatelessWidget {
                     provider.completeSetByIndex(exercise.exercise.id, i),
                 onUncomplete: () =>
                     provider.uncompleteSetByIndex(exercise.exercise.id, i),
+                onRemove: () =>
+                    provider.removeSetFromExercise(exercise.exercise.id, i),
               );
             }),
+            if (!drafts.every((d) => d.completed))
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        provider.addSetToExercise(exercise.exercise.id),
+                    icon: Icon(Icons.add, size: 18,
+                        color: context.colors.muted),
+                    label: Text('Add Set',
+                        style: TextStyle(color: context.colors.muted)),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1001,21 +1148,27 @@ class _SetTable extends StatelessWidget {
 class _SetRow extends StatefulWidget {
   final int setNumber;
   final dynamic draft; // _SetDraft
+  final double displayWeight; // converted + rounded for current unit
   final bool disabled;
+  final bool canRemove;
   final ValueChanged<double> onWeightChanged;
   final ValueChanged<int> onRepsChanged;
   final VoidCallback onComplete;
   final VoidCallback onUncomplete;
+  final VoidCallback? onRemove;
 
   const _SetRow({
     super.key,
     required this.setNumber,
     required this.draft,
+    required this.displayWeight,
     required this.disabled,
+    this.canRemove = false,
     required this.onWeightChanged,
     required this.onRepsChanged,
     required this.onComplete,
     required this.onUncomplete,
+    this.onRemove,
   });
 
   @override
@@ -1030,9 +1183,8 @@ class _SetRowState extends State<_SetRow> {
   void initState() {
     super.initState();
     _weightCtrl = TextEditingController(
-      text: widget.draft.weight > 0
-          ? widget.draft.weight.toStringAsFixed(
-              widget.draft.weight % 1 == 0 ? 0 : 1)
+      text: widget.displayWeight > 0
+          ? widget.displayWeight.toStringAsFixed(0)
           : '',
     );
     _repsCtrl = TextEditingController(
@@ -1053,13 +1205,36 @@ class _SetRowState extends State<_SetRow> {
     final completed = widget.draft.completed as bool;
     final bg = completed ? c.bg : c.card;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
+    return GestureDetector(
+      onLongPress: widget.canRemove && widget.onRemove != null
+          ? () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Remove set?'),
+                  content: Text('Remove set ${widget.setNumber}?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('No'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Yes'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) widget.onRemove!();
+            }
+          : null,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(8),
+        ),
       child: Row(
         children: [
           // Set number
@@ -1127,6 +1302,7 @@ class _SetRowState extends State<_SetRow> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

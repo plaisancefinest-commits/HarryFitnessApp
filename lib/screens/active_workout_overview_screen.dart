@@ -102,7 +102,9 @@ class _ActiveWorkoutOverviewScreenState
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () {
-                    provider.jumpToExercise(i);
+                    if (i != provider.currentExerciseIndex) {
+                      provider.jumpToExercise(i);
+                    }
                     Navigator.pop(context);
                   },
                   child: Padding(
@@ -162,13 +164,43 @@ class _ActiveWorkoutOverviewScreenState
   }
 }
 
-class _AddExerciseSheet extends StatelessWidget {
+class _AddExerciseSheet extends StatefulWidget {
   final List<Exercise> exercises;
 
   const _AddExerciseSheet({required this.exercises});
 
   @override
+  State<_AddExerciseSheet> createState() => _AddExerciseSheetState();
+}
+
+class _AddExerciseSheetState extends State<_AddExerciseSheet> {
+  MuscleGroup? _selectedGroup;
+
+  Map<MuscleGroup, List<Exercise>> get _grouped {
+    final map = <MuscleGroup, List<Exercise>>{};
+    for (final e in widget.exercises) {
+      for (final m in e.primaryMuscles) {
+        map.putIfAbsent(m, () => []).add(e);
+      }
+    }
+    return map;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    if (_selectedGroup == null) {
+      return _buildGroupList(c);
+    }
+    return _buildExerciseList(c);
+  }
+
+  Widget _buildGroupList(AppColors c) {
+    final groups = _grouped;
+    // Sort muscle groups by name for consistency
+    final sortedGroups = groups.keys.toList()
+      ..sort((a, b) => _muscleName(a).compareTo(_muscleName(b)));
+
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(24),
@@ -176,20 +208,56 @@ class _AddExerciseSheet extends StatelessWidget {
           Text('Add exercise',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
+          ...sortedGroups.map((group) => Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  title: Text(_muscleName(group),
+                      style: Theme.of(context).textTheme.titleMedium),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${groups[group]!.length}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: c.muted)),
+                      const SizedBox(width: 8),
+                      Icon(Icons.chevron_right, color: c.borderStrong),
+                    ],
+                  ),
+                  onTap: () => setState(() => _selectedGroup = group),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExerciseList(AppColors c) {
+    final exercises = _grouped[_selectedGroup] ?? [];
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _selectedGroup = null),
+                child: Icon(Icons.arrow_back, color: c.ink, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Text(_muscleName(_selectedGroup!),
+                  style: Theme.of(context).textTheme.titleLarge),
+            ],
+          ),
+          const SizedBox(height: 16),
           ...exercises.map((e) => Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   title: Text(e.name,
                       style: Theme.of(context).textTheme.titleMedium),
-                  subtitle: Text(
-                    e.primaryMuscles.map(_muscleName).join(', '),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: context.colors.muted),
-                  ),
                   trailing: Icon(Icons.add_circle_outline,
-                      color: context.colors.borderStrong),
+                      color: c.borderStrong),
                   onTap: () => Navigator.pop(context, e),
                 ),
               )),

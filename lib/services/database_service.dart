@@ -5,6 +5,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../data/program_json.dart';
 import '../models/body_weight.dart';
+import '../models/exercise.dart';
+import '../models/recovery_check.dart';
 import '../models/program.dart';
 import '../models/week_rating.dart';
 import '../models/workout_session.dart';
@@ -480,6 +482,77 @@ class DatabaseService {
   Future<void> saveSelectedProgramId(String programId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_selectedProgramKey, programId);
+  }
+
+  // ─── In-Progress Workout ────────────────────────────────────────────────────
+
+  static const _inProgressKey = 'in_progress_workout';
+
+  Future<void> saveInProgressWorkout(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_inProgressKey, jsonEncode(data));
+  }
+
+  Future<Map<String, dynamic>?> getInProgressWorkout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_inProgressKey);
+    if (raw == null) return null;
+    return Map<String, dynamic>.from(jsonDecode(raw));
+  }
+
+  Future<void> clearInProgressWorkout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_inProgressKey);
+  }
+
+  // ─── Recovery Checks ────────────────────────────────────────────────────────
+
+  static const _recoveryChecksKey = 'recovery_checks';
+
+  Future<void> saveRecoveryCheck(RecoveryCheck check) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_recoveryChecksKey);
+    final list = raw == null
+        ? <Map<String, dynamic>>[]
+        : List<Map<String, dynamic>>.from(jsonDecode(raw));
+    list.removeWhere((r) => r['id'] == check.id);
+    list.add({
+      'id': check.id,
+      'program_id': check.programId,
+      'week_start': check.weekStart.toIso8601String(),
+      'is_pre_week': check.isPreWeek,
+      'ratings': check.ratings.map((r) => {
+        'muscle_group': r.muscleGroup.name,
+        'status': r.status.name,
+      }).toList(),
+      'created_at': check.createdAt.toIso8601String(),
+    });
+    await prefs.setString(_recoveryChecksKey, jsonEncode(list));
+  }
+
+  Future<RecoveryCheck?> getRecoveryCheckForWeek(
+      String programId, DateTime weekStart, bool isPreWeek) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_recoveryChecksKey);
+    if (raw == null) return null;
+    final list = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    final match = list.where((r) =>
+        r['program_id'] == programId &&
+        r['is_pre_week'] == isPreWeek &&
+        DateTime.parse(r['week_start']).isAtSameMomentAs(weekStart));
+    if (match.isEmpty) return null;
+    final r = match.first;
+    return RecoveryCheck(
+      id: r['id'],
+      programId: r['program_id'],
+      weekStart: DateTime.parse(r['week_start']),
+      isPreWeek: r['is_pre_week'],
+      ratings: (r['ratings'] as List).map((rt) => MuscleRecoveryRating(
+        muscleGroup: MuscleGroup.values.byName(rt['muscle_group']),
+        status: RecoveryStatus.values.byName(rt['status']),
+      )).toList(),
+      createdAt: DateTime.parse(r['created_at']),
+    );
   }
 
   // ─── Week Ratings ───────────────────────────────────────────────────────────

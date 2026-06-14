@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../data/sample_programs.dart';
 import '../models/program.dart';
+import '../models/recovery_check.dart';
 import '../providers/theme_provider.dart';
 import '../services/database_service.dart';
 import '../data/exercise_library.dart';
 import '../theme/app_colors.dart';
+import 'recovery_check_screen.dart';
 import '../widgets/cardio_card.dart';
 import '../widgets/weight_progress_card.dart';
 import 'active_workout_screen.dart';
@@ -60,6 +62,8 @@ class _DashboardTabState extends State<_DashboardTab> {
   Map<String, int> _restRecommendations = {};
   String? _lastCompletedDayId;
   String? _overrideDayId; // user tapped a pill; null = follow rotation
+  bool _showRecoveryCheck = false;
+  bool _recoveryIsPreWeek = true;
 
   Program? _program;
 
@@ -87,6 +91,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
     final recs = hasHistory ? await db.getRestRecommendations(program.id) : <String, int>{};
     final lastDayId = await db.getLastCompletedDayId(program.id);
+    final inProgress = await db.getInProgressWorkout();
     if (mounted) {
       setState(() {
         _program = program;
@@ -96,7 +101,118 @@ class _DashboardTabState extends State<_DashboardTab> {
         _lastCompletedDayId = lastDayId;
         _overrideDayId = null; // a finished workout resets any manual pick
       });
+      if (inProgress != null) {
+        _showResumeDialog(program, inProgress);
+      }
+      // Check recovery prompt
+      await _checkRecovery(program);
     }
+  }
+
+  Future<void> _checkRecovery(Program program) async {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    final db = DatabaseService.instance;
+
+    // Mon-Tue: pre-week recovery check on dashboard
+    // End-of-week check is now triggered on the workout complete screen
+    if (now.weekday > 2) {
+      if (mounted) setState(() => _showRecoveryCheck = false);
+      return;
+    }
+
+    final existing =
+        await db.getRecoveryCheckForWeek(program.id, monday, true);
+    if (mounted) {
+      setState(() {
+        _showRecoveryCheck = existing == null;
+        _recoveryIsPreWeek = true;
+      });
+    }
+  }
+
+  Future<void> _openRecoveryCheck() async {
+    if (_program == null) return;
+    final muscles = muscleGroupsForProgram(_program!.days);
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecoveryCheckScreen(
+          programId: _program!.id,
+          muscleGroups: muscles,
+          isPreWeek: _recoveryIsPreWeek,
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      setState(() => _showRecoveryCheck = false);
+    }
+  }
+
+  Future<void> _showResumeDialog(
+      Program program, Map<String, dynamic> data) async {
+    final dayId = data['dayId'] as String?;
+    final savedAt = data['savedAt'] as String?;
+    final day = program.days.where((d) => d.id == dayId).firstOrNull;
+    if (day == null) {
+      // Day no longer exists in program — discard
+      await DatabaseService.instance.clearInProgressWorkout();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final timeLabel = savedAt != null
+        ? _formatSavedTime(DateTime.parse(savedAt))
+        : '';
+
+    if (!mounted) return;
+    final resume = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Resume workout?'),
+        content: Text(
+            'You have an unfinished ${day.name} workout${timeLabel.isNotEmpty ? ' from $timeLabel' : ''}.\n\nResume or discard?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Discard'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+
+    if (resume == true && mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ActiveWorkoutScreen(
+            program: program,
+            day: day,
+            isFirstWeek: _isFirstWeek,
+            previousRestAverages: _restRecommendations,
+            resumeData: data,
+          ),
+        ),
+      );
+      _loadStats();
+    } else {
+      await DatabaseService.instance.clearInProgressWorkout();
+      if (mounted) setState(() {});
+    }
+  }
+
+  String _formatSavedTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   /// Re-apply any exercise swaps and custom exercise ordering the user
@@ -220,6 +336,14 @@ class _DashboardTabState extends State<_DashboardTab> {
             ),
             const SizedBox(height: 32),
 
+            if (_showRecoveryCheck) ...[
+              _RecoveryCheckCard(
+                isPreWeek: _recoveryIsPreWeek,
+                onTap: _openRecoveryCheck,
+              ),
+              const SizedBox(height: 16),
+            ],
+
             _ThisWeekCard(completedCount: _completedThisWeek),
             const SizedBox(height: 16),
 
@@ -267,6 +391,53 @@ class _DashboardTabState extends State<_DashboardTab> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecoveryCheckCard extends StatelessWidget {
+  final bool isPreWeek;
+  final VoidCallback onTap;
+
+  const _RecoveryCheckCard({required this.isPreWeek, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.healing, color: c.data, size: 28),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isPreWeek ? 'Pre-Week Recovery Check' : 'End-of-Week Recovery',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'How are your muscles feeling?',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: c.borderStrong),
+            ],
+          ),
         ),
       ),
     );

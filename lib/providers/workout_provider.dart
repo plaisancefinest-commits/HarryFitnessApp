@@ -77,8 +77,12 @@ class WorkoutProvider extends ChangeNotifier {
     return _currentDay!.exercises[_currentExerciseIndex];
   }
 
-  bool get isLastSet =>
-      currentExercise != null && _currentSet >= currentExercise!.sets;
+  bool get isLastSet {
+    if (currentExercise == null) return false;
+    final draftCount =
+        _drafts[currentExercise!.exercise.id]?.length ?? 0;
+    return _currentSet >= draftCount;
+  }
 
   bool get isLastExercise =>
       _currentDay != null &&
@@ -110,17 +114,7 @@ class WorkoutProvider extends ChangeNotifier {
   Future<void> toggleUnit() async {
     final newUnit =
         _weightUnit == WeightUnit.lbs ? WeightUnit.kg : WeightUnit.lbs;
-    final factor =
-        newUnit == WeightUnit.kg ? 1 / 2.20462 : 2.20462;
-
-    // Convert all draft weights. Drafts are display values in the current
-    // unit; saved SetLogs are always normalized to lbs at completion time.
-    for (final drafts in _drafts.values) {
-      for (final d in drafts) {
-        d.weight = double.parse((d.weight * factor).toStringAsFixed(1));
-      }
-    }
-
+    // Drafts always store canonical lbs — only the display changes.
     _weightUnit = newUnit;
     await DatabaseService.instance
         .saveWeightUnit(newUnit == WeightUnit.kg ? 'kg' : 'lbs');
@@ -129,9 +123,22 @@ class WorkoutProvider extends ChangeNotifier {
 
   // ─── Draft Updates ────────────────────────────────────────────────────────
 
-  void updateDraftWeight(String exerciseId, int setIndex, double weight) {
-    _drafts[exerciseId]?[setIndex].weight = weight;
+  void updateDraftWeight(String exerciseId, int setIndex, double displayWeight) {
+    // Convert display-unit input back to canonical lbs for storage.
+    final weightLbs = _weightUnit == WeightUnit.kg
+        ? displayWeight * 2.20462
+        : displayWeight;
+    _drafts[exerciseId]?[setIndex].weight = weightLbs;
     notifyListeners();
+  }
+
+  /// Get the weight for display, converted to current unit and rounded.
+  double getDisplayWeight(String exerciseId, int setIndex) {
+    final lbs = _drafts[exerciseId]?[setIndex].weight ?? 0;
+    if (_weightUnit == WeightUnit.kg) {
+      return (lbs / 2.20462).roundToDouble();
+    }
+    return lbs.roundToDouble();
   }
 
   void updateDraftReps(String exerciseId, int setIndex, int reps) {
@@ -169,17 +176,13 @@ class WorkoutProvider extends ChangeNotifier {
       rests: [],
     );
 
-    // Pre-populate drafts for every exercise × set, prefilled with the
-    // program's target weight (converted to the display unit).
+    // Pre-populate drafts for every exercise × set, stored in canonical lbs.
     _drafts.clear();
     for (final pe in day.exercises) {
       final targetLbs = pe.targetWeightLbs ?? 0;
-      final displayWeight = _weightUnit == WeightUnit.kg
-          ? double.parse((targetLbs / 2.20462).toStringAsFixed(1))
-          : targetLbs;
       _drafts[pe.exercise.id] = List.generate(
         pe.sets,
-        (i) => _SetDraft(weight: displayWeight, reps: pe.reps),
+        (i) => _SetDraft(weight: targetLbs, reps: pe.reps),
       );
     }
 
@@ -214,6 +217,7 @@ class WorkoutProvider extends ChangeNotifier {
       _state = WorkoutState.rating;
     }
 
+    _saveProgress();
     notifyListeners();
   }
 
@@ -229,16 +233,12 @@ class WorkoutProvider extends ChangeNotifier {
 
     draft.completed = true;
 
-    // Always store weight in lbs; display converts to the chosen unit.
-    final weightLbs = _weightUnit == WeightUnit.kg
-        ? double.parse((draft.weight * 2.20462).toStringAsFixed(1))
-        : draft.weight;
-
+    // Drafts always store canonical lbs — use directly.
     _session!.sets.add(SetLog(
       id: _uuid.v4(),
       exerciseId: exerciseId,
       setNumber: setIndex + 1,
-      weight: weightLbs,
+      weight: draft.weight,
       reps: draft.reps,
       completedAt: DateTime.now(),
     ));
@@ -247,6 +247,7 @@ class WorkoutProvider extends ChangeNotifier {
     _currentSet = setIndex + 1;
     _restStartTime = DateTime.now();
     _state = WorkoutState.resting;
+    _saveProgress();
 
     if (_timerMode == TimerMode.countdown) {
       // Prefer learned rest averages, then the program's prescribed rest.
@@ -285,6 +286,7 @@ class WorkoutProvider extends ChangeNotifier {
       _state = WorkoutState.active;
     }
 
+    _saveProgress();
     notifyListeners();
   }
 
@@ -311,6 +313,7 @@ class WorkoutProvider extends ChangeNotifier {
       _state = WorkoutState.active;
       notifyListeners();
     }
+    _saveProgress();
   }
 
   // ─── Manual Exercise Navigation ───────────────────────────────────────────
@@ -322,6 +325,7 @@ class WorkoutProvider extends ChangeNotifier {
     _currentExerciseIndex--;
     _currentSet = 1;
     _state = WorkoutState.active;
+    _saveProgress();
     notifyListeners();
   }
 
@@ -332,6 +336,7 @@ class WorkoutProvider extends ChangeNotifier {
     _currentExerciseIndex++;
     _currentSet = 1;
     _state = WorkoutState.active;
+    _saveProgress();
     notifyListeners();
   }
 
@@ -361,6 +366,7 @@ class WorkoutProvider extends ChangeNotifier {
     _state = WorkoutState.complete;
     _timer?.cancel();
 
+    await clearSavedProgress();
     await DatabaseService.instance.saveSession(_session!);
     if (_program != null) {
       await DatabaseService.instance
@@ -441,6 +447,7 @@ class WorkoutProvider extends ChangeNotifier {
     _currentExerciseIndex = index;
     _currentSet = 1;
     _state = WorkoutState.active;
+    _saveProgress();
     notifyListeners();
   }
 
@@ -472,13 +479,34 @@ class WorkoutProvider extends ChangeNotifier {
     if (_currentDay == null) return;
     _currentDay!.exercises.add(exercise);
     final targetLbs = exercise.targetWeightLbs ?? 0;
-    final displayWeight = _weightUnit == WeightUnit.kg
-        ? double.parse((targetLbs / 2.20462).toStringAsFixed(1))
-        : targetLbs;
     _drafts[exercise.exercise.id] = List.generate(
       exercise.sets,
-      (i) => _SetDraft(weight: displayWeight, reps: exercise.reps),
+      (i) => _SetDraft(weight: targetLbs, reps: exercise.reps),
     );
+    _saveProgress();
+    notifyListeners();
+  }
+
+  void removeSetFromExercise(String exerciseId, int setIndex) {
+    final drafts = _drafts[exerciseId];
+    if (drafts == null || drafts.length <= 1) return; // keep at least 1 set
+    if (setIndex < 0 || setIndex >= drafts.length) return;
+    // Also remove any matching SetLog from the session
+    if (_session != null) {
+      _session!.sets.removeWhere(
+          (s) => s.exerciseId == exerciseId && s.setNumber == setIndex + 1);
+    }
+    drafts.removeAt(setIndex);
+    _saveProgress();
+    notifyListeners();
+  }
+
+  void addSetToExercise(String exerciseId) {
+    final drafts = _drafts[exerciseId];
+    if (drafts == null || drafts.isEmpty) return;
+    final last = drafts.last;
+    drafts.add(_SetDraft(weight: last.weight, reps: last.reps));
+    _saveProgress();
     notifyListeners();
   }
 
@@ -488,6 +516,137 @@ class WorkoutProvider extends ChangeNotifier {
   }
 
   String? get programId => _program?.id;
+
+  // ─── Save / Resume ──────────────────────────────────────────────────────
+
+  Map<String, dynamic> toResumableJson() {
+    return {
+      'programId': _program?.id,
+      'dayId': _currentDay?.id,
+      'session': {
+        'id': _session?.id,
+        'programId': _session?.programId,
+        'workoutDayId': _session?.workoutDayId,
+        'date': _session?.date.toIso8601String(),
+        'dayRating': _session?.dayRating,
+        'sets': _session?.sets.map((s) => {
+          'id': s.id,
+          'exerciseId': s.exerciseId,
+          'setNumber': s.setNumber,
+          'weight': s.weight,
+          'reps': s.reps,
+          'notes': s.notes,
+          'completedAt': s.completedAt.toIso8601String(),
+        }).toList(),
+        'rests': _session?.rests.map((r) => {
+          'exerciseId': r.exerciseId,
+          'setNumber': r.setNumber,
+          'restSeconds': r.restSeconds,
+        }).toList(),
+      },
+      'drafts': _drafts.map((k, v) => MapEntry(k, v.map((d) => {
+        'weight': d.weight,
+        'reps': d.reps,
+        'completed': d.completed,
+      }).toList())),
+      'currentExerciseIndex': _currentExerciseIndex,
+      'currentSet': _currentSet,
+      'state': _state.name,
+      'timerSeconds': _timerSeconds,
+      'timerMode': _timerMode.name,
+      'restStartTime': _restStartTime?.toIso8601String(),
+      'stretchPhase': _currentStretchPhase.name,
+      'stretchIndex': _currentStretchIndex,
+      'recommendedRest': recommendedRest,
+      'savedAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<void> _saveProgress() async {
+    if (_session == null || _state == WorkoutState.idle ||
+        _state == WorkoutState.complete) return;
+    await DatabaseService.instance.saveInProgressWorkout(toResumableJson());
+  }
+
+  Future<void> clearSavedProgress() async {
+    await DatabaseService.instance.clearInProgressWorkout();
+  }
+
+  /// Resume a previously saved workout. Call instead of startSession().
+  void resumeFromJson({
+    required Program program,
+    required WorkoutDay day,
+    required Map<String, dynamic> data,
+  }) {
+    _program = program;
+    _currentDay = day;
+
+    // Restore session
+    final s = data['session'] as Map<String, dynamic>;
+    _session = WorkoutSession(
+      id: s['id'],
+      programId: s['programId'],
+      workoutDayId: s['workoutDayId'],
+      date: DateTime.parse(s['date']),
+      dayRating: s['dayRating'] as int?,
+      sets: (s['sets'] as List).map((sl) => SetLog(
+        id: sl['id'],
+        exerciseId: sl['exerciseId'],
+        setNumber: sl['setNumber'],
+        weight: (sl['weight'] as num).toDouble(),
+        reps: sl['reps'],
+        notes: sl['notes'] as String?,
+        completedAt: DateTime.parse(sl['completedAt']),
+      )).toList(),
+      rests: (s['rests'] as List).map((rl) => RestLog(
+        exerciseId: rl['exerciseId'],
+        setNumber: rl['setNumber'],
+        restSeconds: rl['restSeconds'],
+      )).toList(),
+    );
+
+    // Restore drafts
+    _drafts.clear();
+    final draftsMap = Map<String, dynamic>.from(data['drafts']);
+    for (final entry in draftsMap.entries) {
+      _drafts[entry.key] = (entry.value as List).map((d) => _SetDraft(
+        weight: (d['weight'] as num).toDouble(),
+        reps: d['reps'],
+        completed: d['completed'] ?? false,
+      )).toList();
+    }
+
+    // Restore position
+    _currentExerciseIndex = data['currentExerciseIndex'] ?? 0;
+    _currentSet = data['currentSet'] ?? 1;
+    _timerSeconds = data['timerSeconds'] ?? 0;
+    _timerMode = data['timerMode'] == 'countdown'
+        ? TimerMode.countdown : TimerMode.stopwatch;
+    _currentStretchPhase = data['stretchPhase'] == 'coolDown'
+        ? StretchPhase.coolDown : StretchPhase.warmUp;
+    _currentStretchIndex = data['stretchIndex'] ?? 0;
+    recommendedRest = Map<String, int>.from(data['recommendedRest'] ?? {});
+
+    // Restore rest start time
+    final restStr = data['restStartTime'] as String?;
+    _restStartTime = restStr != null ? DateTime.parse(restStr) : null;
+
+    // Restore state — if was resting, go back to active (timer expired)
+    final stateName = data['state'] as String? ?? 'active';
+    if (stateName == 'resting') {
+      // Rest likely expired while app was closed — resume as active
+      _state = WorkoutState.active;
+      _restStartTime = null;
+    } else if (stateName == 'stretching') {
+      _state = WorkoutState.stretching;
+    } else if (stateName == 'rating') {
+      _state = WorkoutState.rating;
+    } else {
+      _state = WorkoutState.active;
+    }
+
+    notifyListeners();
+  }
 
   Map<String, int> get sessionRestAverages {
     return _session?.averageRestPerExercise.map(
