@@ -6,6 +6,7 @@ import 'package:path/path.dart';
 import '../data/program_json.dart';
 import '../models/body_weight.dart';
 import '../models/program.dart';
+import '../models/week_rating.dart';
 import '../models/workout_session.dart';
 
 /// Unified persistence layer.
@@ -26,11 +27,11 @@ class DatabaseService {
 
   Future<Database> _initDb() async {
     final path = join(await getDatabasesPath(), 'harry_fitness.db');
-    return openDatabase(path, version: 1, onCreate: (db, v) async {
+    return openDatabase(path, version: 2, onCreate: (db, v) async {
       await db.execute('''
         CREATE TABLE sessions (
           id TEXT PRIMARY KEY, program_id TEXT, workout_day_id TEXT,
-          date TEXT, is_complete INTEGER DEFAULT 0
+          date TEXT, is_complete INTEGER DEFAULT 0, day_rating INTEGER
         )''');
       await db.execute('''
         CREATE TABLE set_logs (
@@ -48,6 +49,20 @@ class DatabaseService {
           program_id TEXT, exercise_id TEXT, recommended_seconds INTEGER,
           PRIMARY KEY (program_id, exercise_id)
         )''');
+      await db.execute('''
+        CREATE TABLE week_ratings (
+          id TEXT PRIMARY KEY, program_id TEXT, week_start TEXT,
+          rating INTEGER, created_at TEXT
+        )''');
+    }, onUpgrade: (db, oldVersion, newVersion) async {
+      if (oldVersion < 2) {
+        await db.execute('ALTER TABLE sessions ADD COLUMN day_rating INTEGER');
+        await db.execute('''
+          CREATE TABLE week_ratings (
+            id TEXT PRIMARY KEY, program_id TEXT, week_start TEXT,
+            rating INTEGER, created_at TEXT
+          )''');
+      }
     });
   }
 
@@ -115,6 +130,7 @@ class DatabaseService {
                   'rest_seconds': r.restSeconds,
                 })
             .toList(),
+        if (session.dayRating != null) 'day_rating': session.dayRating,
       });
       await _prefSaveSessions(sessions);
     } else {
@@ -126,6 +142,7 @@ class DatabaseService {
           'workout_day_id': session.workoutDayId,
           'date': session.date.toIso8601String(),
           'is_complete': session.isComplete ? 1 : 0,
+          'day_rating': session.dayRating,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
         for (final s in session.sets) {
           await txn.insert('set_logs', {
@@ -184,6 +201,7 @@ class DatabaseService {
                 workoutDayId: s['workout_day_id'],
                 date: DateTime.parse(s['date']),
                 isComplete: true,
+                dayRating: s['day_rating'] as int?,
                 sets: (s['sets'] as List)
                     .map((sl) => SetLog(
                           id: sl['id'],
@@ -222,6 +240,7 @@ class DatabaseService {
           workoutDayId: row['workout_day_id'] as String,
           date: DateTime.parse(row['date'] as String),
           isComplete: true,
+          dayRating: row['day_rating'] as int?,
           sets: setRows.map((r) => SetLog(
                 id: r['id'] as String, exerciseId: r['exercise_id'] as String,
                 setNumber: r['set_number'] as int, weight: r['weight'] as double,
@@ -461,6 +480,78 @@ class DatabaseService {
   Future<void> saveSelectedProgramId(String programId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_selectedProgramKey, programId);
+  }
+
+  // ─── Week Ratings ───────────────────────────────────────────────────────────
+
+  static const _weekRatingsKey = 'week_ratings';
+
+  Future<void> saveWeekRating(WeekRating rating) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_weekRatingsKey);
+      final list = raw == null
+          ? <Map<String, dynamic>>[]
+          : List<Map<String, dynamic>>.from(jsonDecode(raw));
+      list.removeWhere((r) => r['id'] == rating.id);
+      list.add({
+        'id': rating.id,
+        'program_id': rating.programId,
+        'week_start': rating.weekStart.toIso8601String(),
+        'rating': rating.rating,
+        'created_at': rating.createdAt.toIso8601String(),
+      });
+      await prefs.setString(_weekRatingsKey, jsonEncode(list));
+    } else {
+      final db = await _sqlite;
+      await db.insert('week_ratings', {
+        'id': rating.id,
+        'program_id': rating.programId,
+        'week_start': rating.weekStart.toIso8601String(),
+        'rating': rating.rating,
+        'created_at': rating.createdAt.toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  /// Returns the week rating for the current Monday-to-Sunday window, if any.
+  Future<WeekRating?> getWeekRatingForCurrentWeek(String programId) async {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_weekRatingsKey);
+      if (raw == null) return null;
+      final list = List<Map<String, dynamic>>.from(jsonDecode(raw));
+      final match = list.where((r) =>
+          r['program_id'] == programId &&
+          DateTime.parse(r['week_start']).isAtSameMomentAs(monday));
+      if (match.isEmpty) return null;
+      final r = match.first;
+      return WeekRating(
+        id: r['id'],
+        programId: r['program_id'],
+        weekStart: DateTime.parse(r['week_start']),
+        rating: r['rating'],
+        createdAt: DateTime.parse(r['created_at']),
+      );
+    } else {
+      final db = await _sqlite;
+      final rows = await db.query('week_ratings',
+          where: 'program_id = ? AND week_start = ?',
+          whereArgs: [programId, monday.toIso8601String()]);
+      if (rows.isEmpty) return null;
+      final r = rows.first;
+      return WeekRating(
+        id: r['id'] as String,
+        programId: r['program_id'] as String,
+        weekStart: DateTime.parse(r['week_start'] as String),
+        rating: r['rating'] as int,
+        createdAt: DateTime.parse(r['created_at'] as String),
+      );
+    }
   }
 
   Future<String> getWeightUnit() async {

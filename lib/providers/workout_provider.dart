@@ -10,7 +10,7 @@ enum WeightUnit { lbs, kg }
 
 enum TimerMode { stopwatch, countdown }
 
-enum WorkoutState { idle, stretching, active, resting, complete }
+enum WorkoutState { idle, stretching, active, resting, rating, complete }
 
 class _SetDraft {
   double weight;
@@ -210,9 +210,8 @@ class WorkoutProvider extends ChangeNotifier {
       // Done with warm-up → start workout
       _state = WorkoutState.active;
     } else {
-      // Done with cool-down → save and complete
-      _finishWorkout();
-      return;
+      // Done with cool-down → show day rating
+      _state = WorkoutState.rating;
     }
 
     notifyListeners();
@@ -256,6 +255,7 @@ class WorkoutProvider extends ChangeNotifier {
           .firstOrNull
           ?.restSeconds;
       _timerSeconds = recommendedRest[exerciseId] ?? plannedRest ?? 90;
+      _timerInitialSeconds = _timerSeconds;
       _startCountdown();
     } else {
       _timerSeconds = 0;
@@ -352,7 +352,7 @@ class WorkoutProvider extends ChangeNotifier {
       _currentStretchIndex = 0;
       _state = WorkoutState.stretching;
     } else {
-      _finishWorkout();
+      _state = WorkoutState.rating;
     }
   }
 
@@ -397,6 +397,97 @@ class WorkoutProvider extends ChangeNotifier {
     }
     endRest();
   }
+
+  // ─── Day Rating ──────────────────────────────────────────────────────────
+
+  void setDayRating(int rating) {
+    if (_session != null) {
+      _session!.dayRating = rating;
+      notifyListeners();
+    }
+  }
+
+  Future<void> confirmRating() async {
+    await _finishWorkout();
+  }
+
+  /// Skip rating and finish immediately.
+  Future<void> skipRating() async {
+    await _finishWorkout();
+  }
+
+  // ─── Rest Timer Helpers ─────────────────────────────────────────────────
+
+  int? _timerInitialSeconds;
+
+  int get timerInitialSeconds => _timerInitialSeconds ?? _timerSeconds;
+
+  void addRestTime(int seconds) {
+    if (_timerMode == TimerMode.countdown && _state == WorkoutState.resting) {
+      _timerSeconds += seconds;
+      _timerInitialSeconds = (_timerInitialSeconds ?? _timerSeconds) + seconds;
+      notifyListeners();
+    }
+  }
+
+  // ─── Mid-Session Workout Overview ─────────────────────────────────────────
+
+  void jumpToExercise(int index) {
+    if (_currentDay == null ||
+        index < 0 ||
+        index >= _currentDay!.exercises.length) return;
+    _timer?.cancel();
+    _restStartTime = null;
+    _currentExerciseIndex = index;
+    _currentSet = 1;
+    _state = WorkoutState.active;
+    notifyListeners();
+  }
+
+  void reorderExercises(int oldIndex, int newIndex) {
+    if (_currentDay == null) return;
+    if (newIndex > oldIndex) newIndex--;
+    final exercises = _currentDay!.exercises;
+    final item = exercises.removeAt(oldIndex);
+    exercises.insert(newIndex, item);
+    for (var i = 0; i < exercises.length; i++) {
+      exercises[i].order = i;
+    }
+    // Adjust _currentExerciseIndex if affected by the reorder
+    if (_currentExerciseIndex == oldIndex) {
+      _currentExerciseIndex = newIndex;
+    } else if (oldIndex < _currentExerciseIndex &&
+        newIndex >= _currentExerciseIndex) {
+      _currentExerciseIndex--;
+    } else if (oldIndex > _currentExerciseIndex &&
+        newIndex <= _currentExerciseIndex) {
+      _currentExerciseIndex++;
+    }
+    notifyListeners();
+    DatabaseService.instance.saveExerciseOrder(
+        _currentDay!.id, exercises.map((e) => e.id).toList());
+  }
+
+  void addExerciseMidWorkout(PlannedExercise exercise) {
+    if (_currentDay == null) return;
+    _currentDay!.exercises.add(exercise);
+    final targetLbs = exercise.targetWeightLbs ?? 0;
+    final displayWeight = _weightUnit == WeightUnit.kg
+        ? double.parse((targetLbs / 2.20462).toStringAsFixed(1))
+        : targetLbs;
+    _drafts[exercise.exercise.id] = List.generate(
+      exercise.sets,
+      (i) => _SetDraft(weight: displayWeight, reps: exercise.reps),
+    );
+    notifyListeners();
+  }
+
+  bool isExerciseComplete(String exerciseId) {
+    final drafts = _drafts[exerciseId];
+    return drafts != null && drafts.every((d) => d.completed);
+  }
+
+  String? get programId => _program?.id;
 
   Map<String, int> get sessionRestAverages {
     return _session?.averageRestPerExercise.map(

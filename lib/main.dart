@@ -40,19 +40,31 @@ class HarryFitnessApp extends StatelessWidget {
     );
   }
 
+  static bool _isDark(AppColors c) =>
+      ThemeData.estimateBrightnessForColor(c.bg) == Brightness.dark;
+
   ThemeData _buildTheme(AppColors c) {
     return ThemeData(
       useMaterial3: true,
       scaffoldBackgroundColor: c.bg,
       extensions: [c],
-      colorScheme: ColorScheme.light(
-        surface: c.bg,
-        onSurface: c.ink,
-        primary: c.accent,
-        onPrimary: c.onAccent,
-        secondary: c.fill,
-        onSecondary: c.ink,
-      ),
+      colorScheme: _isDark(c)
+          ? ColorScheme.dark(
+              surface: c.bg,
+              onSurface: c.ink,
+              primary: c.accent,
+              onPrimary: c.onAccent,
+              secondary: c.fill,
+              onSecondary: c.ink,
+            )
+          : ColorScheme.light(
+              surface: c.bg,
+              onSurface: c.ink,
+              primary: c.accent,
+              onPrimary: c.onAccent,
+              secondary: c.fill,
+              onSecondary: c.ink,
+            ),
       cardTheme: CardThemeData(
         elevation: 0,
         color: c.card,

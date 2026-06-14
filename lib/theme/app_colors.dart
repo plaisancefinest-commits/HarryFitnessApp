@@ -88,6 +88,24 @@ class AppColors extends ThemeExtension<AppColors> {
     cardOutline: Colors.transparent,
   );
 
+  static const blackGold = AppColors(
+    bg: Color(0xFF080806),
+    card: Color(0xFF181814),
+    fill: Color(0xFF22211C),
+    fillDeep: Color(0xFF1C1B17),
+    border: Color(0xFF2C2A24),
+    borderStrong: Color(0xFF3D3A30),
+    ink: Color(0xFFEDE8D8),
+    muted: Color(0xFF9A9480),
+    faint: Color(0xFF6B6658),
+    accent: Color(0xFFB8A468),
+    onAccent: Color(0xFF080806),
+    data: Color(0xFFB8A468),
+    warm: Color(0xFFCBB876),
+    green: Color(0xFF6B8E4E),
+    cardOutline: Color(0xFF2C2A24),
+  );
+
   static const carabinero = AppColors(
     bg: Color(0xFF7E1119),
     card: Color(0xFFC22730),

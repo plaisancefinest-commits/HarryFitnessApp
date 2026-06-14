@@ -6,6 +6,7 @@ class WorkoutSession {
   final List<SetLog> sets;
   final List<RestLog> rests;
   bool isComplete;
+  int? dayRating; // 1-10 rating given at end of workout
 
   WorkoutSession({
     required this.id,
@@ -15,6 +16,7 @@ class WorkoutSession {
     this.sets = const [],
     this.rests = const [],
     this.isComplete = false,
+    this.dayRating,
   });
 
   // Average rest per exercise across all sets in this session

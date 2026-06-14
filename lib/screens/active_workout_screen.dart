@@ -1,10 +1,15 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import '../models/program.dart';
+import '../models/week_rating.dart';
 import '../providers/workout_provider.dart';
+import '../services/database_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/muscle_diagram.dart';
+import 'active_workout_overview_screen.dart';
 
 class ActiveWorkoutScreen extends StatefulWidget {
   final Program program;
@@ -26,10 +31,14 @@ class ActiveWorkoutScreen extends StatefulWidget {
 
 class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
   DiagramSide _diagramSide = DiagramSide.front;
+  int? _selectedDayRating;
+  late PageController _pageController;
+  bool _syncingPage = false;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<WorkoutProvider>().startSession(
             program: widget.program,
@@ -38,6 +47,26 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
             previousRestAverages: widget.previousRestAverages,
           );
     });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  /// Keep PageController in sync with the provider's exercise index.
+  void _syncPageToProvider(int providerIndex) {
+    if (!_pageController.hasClients) return;
+    final currentPage = _pageController.page?.round() ?? 0;
+    if (currentPage != providerIndex) {
+      _syncingPage = true;
+      _pageController
+          .animateToPage(providerIndex,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut)
+          .then((_) => _syncingPage = false);
+    }
   }
 
   String _formatTime(int seconds) {
@@ -51,15 +80,24 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     return Consumer<WorkoutProvider>(
       builder: (context, provider, _) {
         if (provider.state == WorkoutState.complete) {
-          return _buildCompleteScreen(context);
+          return _buildCompleteScreen(context, provider);
+        }
+
+        if (provider.state == WorkoutState.rating) {
+          return _buildRatingScreen(context, provider);
         }
 
         if (provider.state == WorkoutState.stretching) {
           return _buildStretchScreen(context, provider);
         }
 
-        final exercise = provider.currentExercise;
-        if (exercise == null) return const SizedBox.shrink();
+        if (widget.day.exercises.isEmpty) return const SizedBox.shrink();
+
+        // Sync page controller when provider index changes (e.g. from
+        // overview screen jump or endRest advancing)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _syncPageToProvider(provider.currentExerciseIndex);
+        });
 
         final c = context.colors;
         return Scaffold(
@@ -74,6 +112,16 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
             title: Text(widget.day.name,
                 style: Theme.of(context).textTheme.titleMedium),
             actions: [
+              IconButton(
+                icon: Icon(Icons.list, color: c.ink),
+                tooltip: 'View full workout',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ActiveWorkoutOverviewScreen(),
+                  ),
+                ),
+              ),
               _UnitToggle(
                 unit: provider.weightUnit,
                 onToggle: provider.toggleUnit,
@@ -81,139 +129,196 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               const SizedBox(width: 8),
             ],
           ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Exercise name
-                Text(exercise.exercise.name,
-                    style: Theme.of(context).textTheme.displaySmall),
-                const SizedBox(height: 4),
-                Row(
+          body: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.day.exercises.length,
+            onPageChanged: (index) {
+              if (_syncingPage) return; // ignore programmatic page changes
+              if (index > provider.currentExerciseIndex) {
+                provider.goToNextExercise();
+              } else if (index < provider.currentExerciseIndex) {
+                provider.goToPreviousExercise();
+              }
+            },
+            itemBuilder: (context, index) {
+              final exercise = widget.day.exercises[index];
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _NavArrow(
-                      icon: Icons.chevron_left,
-                      enabled: provider.currentExerciseIndex > 0,
-                      onTap: provider.goToPreviousExercise,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        '${provider.currentExerciseIndex + 1} of ${widget.day.exercises.length}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                    _NavArrow(
-                      icon: Icons.chevron_right,
-                      enabled: !provider.isLastExercise,
-                      onTap: provider.goToNextExercise,
-                    ),
-                  ],
-                ),
-                if (exercise.targetWeightLbs != null ||
-                    exercise.notes != null) ...[
-                  const SizedBox(height: 12),
-                  _TargetInfo(exercise: exercise, unit: provider.weightUnit),
-                ],
-                const SizedBox(height: 20),
-
-                // Muscle diagram
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+                    // Exercise name
+                    Text(exercise.exercise.name,
+                        style: Theme.of(context).textTheme.displaySmall),
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
-                        // Front / Back toggle
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _SideToggle(
-                              side: _diagramSide,
-                              onChanged: (s) =>
-                                  setState(() => _diagramSide = s),
-                            ),
-                          ],
+                        _NavArrow(
+                          icon: Icons.chevron_left,
+                          enabled: provider.currentExerciseIndex > 0,
+                          onTap: () {
+                            provider.goToPreviousExercise();
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
                         ),
-                        const SizedBox(height: 12),
-                        MuscleDiagram(
-                          primaryMuscles:
-                              exercise.exercise.primaryMuscles,
-                          secondaryMuscles:
-                              exercise.exercise.secondaryMuscles,
-                          side: _diagramSide,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '${provider.currentExerciseIndex + 1} of ${widget.day.exercises.length}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        // Legend
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _LegendDot(color: c.accent),
-                            const SizedBox(width: 4),
-                            Text('Primary',
-                                style: Theme.of(context).textTheme.labelSmall),
-                            const SizedBox(width: 16),
-                            _LegendDot(color: c.faint),
-                            const SizedBox(width: 4),
-                            Text('Secondary',
-                                style: Theme.of(context).textTheme.labelSmall),
-                          ],
+                        _NavArrow(
+                          icon: Icons.chevron_right,
+                          enabled: !provider.isLastExercise,
+                          onTap: () {
+                            provider.goToNextExercise();
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
                         ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                    if (exercise.targetWeightLbs != null) ...[
+                      const SizedBox(height: 12),
+                      _TargetInfo(
+                          exercise: exercise, unit: provider.weightUnit),
+                    ],
+                    const SizedBox(height: 20),
 
-                // Instructions
-                if (exercise.exercise.instructions != null) ...[
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('How to perform',
+                    // Muscle diagram
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _SideToggle(
+                                  side: _diagramSide,
+                                  onChanged: (s) =>
+                                      setState(() => _diagramSide = s),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            MuscleDiagram(
+                              primaryMuscles:
+                                  exercise.exercise.primaryMuscles,
+                              secondaryMuscles:
+                                  exercise.exercise.secondaryMuscles,
+                              side: _diagramSide,
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _LegendDot(color: c.accent),
+                                const SizedBox(width: 4),
+                                Text('Primary',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall),
+                                const SizedBox(width: 16),
+                                _LegendDot(color: c.faint),
+                                const SizedBox(width: 4),
+                                Text('Secondary',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // How to perform (collapsible)
+                    if (exercise.exercise.instructions != null ||
+                        exercise.notes != null ||
+                        exercise.exercise.videoUrl != null) ...[
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: ExpansionTile(
+                          tilePadding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                          childrenPadding:
+                              const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          title: Text('How to perform',
                               style: Theme.of(context)
                                   .textTheme
                                   .labelSmall
                                   ?.copyWith(letterSpacing: 1.0)),
-                          const SizedBox(height: 8),
-                          Text(
-                            exercise.exercise.instructions!,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
+                          children: [
+                            if (exercise.exercise.instructions != null) ...[
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  exercise.exercise.instructions!,
+                                  style:
+                                      Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (exercise.notes != null) ...[
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  exercise.notes!,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        fontStyle: FontStyle.italic,
+                                        color: c.muted,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            _VideoLink(
+                              name: exercise.exercise.name,
+                              url: exercise.exercise.videoUrl,
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Set table
+                    _SetTable(
+                      exercise: exercise,
+                      provider: provider,
+                      unit: provider.weightUnit,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                    const SizedBox(height: 16),
 
-                _VideoLink(
-                  name: exercise.exercise.name,
-                  url: exercise.exercise.videoUrl,
+                    // Timer card (shown during rest on current exercise)
+                    if (provider.state == WorkoutState.resting &&
+                        index == provider.currentExerciseIndex)
+                      _TimerCard(
+                        seconds: provider.timerSeconds,
+                        initialSeconds: provider.timerInitialSeconds,
+                        mode: provider.timerMode,
+                        formatTime: _formatTime,
+                        onSkip: provider.endRest,
+                        onAddTime: () => provider.addRestTime(30),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-
-                // Set table
-                _SetTable(
-                  exercise: exercise,
-                  provider: provider,
-                  unit: provider.weightUnit,
-                ),
-                const SizedBox(height: 16),
-
-                // Timer card (shown during rest)
-                if (provider.state == WorkoutState.resting)
-                  _TimerCard(
-                    seconds: provider.timerSeconds,
-                    mode: provider.timerMode,
-                    formatTime: _formatTime,
-                    onSkip: provider.endRest,
-                  ),
-              ],
-            ),
+              );
+            },
           ),
         );
       },
@@ -304,7 +409,93 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     );
   }
 
-  Widget _buildCompleteScreen(BuildContext context) {
+  Widget _buildRatingScreen(BuildContext context, WorkoutProvider provider) {
+    final c = context.colors;
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 40),
+              Text('Rate this\nworkout',
+                  style: Theme.of(context).textTheme.displaySmall),
+              const SizedBox(height: 8),
+              Text(
+                'How did it feel today?',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: c.muted),
+              ),
+              const SizedBox(height: 40),
+              // 1-10 rating buttons
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(10, (i) {
+                  final value = i + 1;
+                  final selected = _selectedDayRating == value;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedDayRating = value),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: selected ? c.accent : c.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected ? c.accent : c.border,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '$value',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? c.onAccent : c.ink,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _selectedDayRating != null
+                      ? () {
+                          provider.setDayRating(_selectedDayRating!);
+                          provider.confirmRating();
+                        }
+                      : null,
+                  child: const Text('Done'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => provider.skipRating(),
+                  child: Text('Skip',
+                      style: TextStyle(color: c.muted)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompleteScreen(
+      BuildContext context, WorkoutProvider provider) {
+    final programId = provider.programId;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -321,6 +512,10 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
                 'Great work. Session saved.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              const SizedBox(height: 24),
+              // Week rating prompt (Thu–Sun, if not already rated)
+              if (programId != null)
+                _WeekRatingPrompt(programId: programId),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -331,6 +526,132 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Week Rating Prompt ──────────────────────────────────────────────────────
+
+/// Shown on the complete screen Thu–Sun if the user hasn't rated the week yet.
+class _WeekRatingPrompt extends StatefulWidget {
+  final String programId;
+  const _WeekRatingPrompt({required this.programId});
+
+  @override
+  State<_WeekRatingPrompt> createState() => _WeekRatingPromptState();
+}
+
+class _WeekRatingPromptState extends State<_WeekRatingPrompt> {
+  bool _loading = true;
+  bool _show = false;
+  int? _selectedRating;
+  bool _submitted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final now = DateTime.now();
+    // Only show Thu (4) – Sun (7)
+    if (now.weekday < 4) {
+      setState(() {
+        _loading = false;
+        _show = false;
+      });
+      return;
+    }
+    final existing = await DatabaseService.instance
+        .getWeekRatingForCurrentWeek(widget.programId);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _show = existing == null;
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_selectedRating == null) return;
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    await DatabaseService.instance.saveWeekRating(WeekRating(
+      id: const Uuid().v4(),
+      programId: widget.programId,
+      weekStart: monday,
+      rating: _selectedRating!,
+      createdAt: now,
+    ));
+    setState(() => _submitted = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || !_show || _submitted) return const SizedBox.shrink();
+    final c = context.colors;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Rate your week',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(letterSpacing: 1.0)),
+            const SizedBox(height: 4),
+            Text('How was training this week overall?',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: c.muted)),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: List.generate(10, (i) {
+                final value = i + 1;
+                final selected = _selectedRating == value;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedRating = value),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: selected ? c.accent : c.fill,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? c.onAccent : c.ink,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            if (_selectedRating != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  child: const Text('Submit'),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -379,16 +700,6 @@ class _TargetInfo extends StatelessWidget {
                   color: context.colors.ink,
                 ),
           ),
-        if (exercise.notes != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            exercise.notes!,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: context.colors.muted,
-                ),
-          ),
-        ],
       ],
     );
   }
@@ -881,51 +1192,143 @@ class _InlineField extends StatelessWidget {
 
 class _TimerCard extends StatelessWidget {
   final int seconds;
+  final int initialSeconds;
   final TimerMode mode;
   final String Function(int) formatTime;
   final VoidCallback onSkip;
+  final VoidCallback onAddTime;
 
   const _TimerCard({
     required this.seconds,
+    required this.initialSeconds,
     required this.mode,
     required this.formatTime,
     required this.onSkip,
+    required this.onAddTime,
   });
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    // For countdown: progress goes from 1.0 → 0.0
+    // For stopwatch: no meaningful progress, show full ring
+    final progress = mode == TimerMode.countdown && initialSeconds > 0
+        ? seconds / initialSeconds
+        : 1.0;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  mode == TimerMode.stopwatch ? 'Rest (tracking)' : 'Rest',
-                  style: Theme.of(context).textTheme.labelSmall,
+            // Circular timer
+            SizedBox(
+              width: 120,
+              height: 120,
+              child: CustomPaint(
+                painter: _CircleTimerPainter(
+                  progress: progress.clamp(0.0, 1.0),
+                  trackColor: c.fill,
+                  progressColor: c.accent,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  formatTime(seconds),
-                  style: TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: -1,
-                    color: context.colors.ink,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        formatTime(seconds),
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w300,
+                          letterSpacing: -1,
+                          color: c.ink,
+                        ),
+                      ),
+                      Text(
+                        mode == TimerMode.stopwatch ? 'tracking' : 'rest',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelSmall
+                            ?.copyWith(color: c.muted),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-            TextButton(
-              onPressed: onSkip,
-              child: const Text('Skip Rest'),
+            const SizedBox(width: 24),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (mode == TimerMode.countdown)
+                  OutlinedButton(
+                    onPressed: onAddTime,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: c.border),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                    ),
+                    child: Text('+30s',
+                        style: TextStyle(color: c.ink, fontSize: 14)),
+                  ),
+                if (mode == TimerMode.countdown) const SizedBox(height: 12),
+                TextButton(
+                  onPressed: onSkip,
+                  child: Text('Skip',
+                      style: TextStyle(color: c.muted, fontSize: 14)),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+}
+
+// ─── Circle Timer Painter ────────────────────────────────────────────────────
+
+class _CircleTimerPainter extends CustomPainter {
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+
+  _CircleTimerPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 4;
+
+    // Track
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(center, radius, trackPaint);
+
+    // Progress arc (starts from top, sweeps clockwise)
+    final progressPaint = Paint()
+      ..color = progressColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CircleTimerPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

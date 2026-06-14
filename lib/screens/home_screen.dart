@@ -160,6 +160,13 @@ class _DashboardTabState extends State<_DashboardTab> {
             onTap: () => Navigator.pop(context, AppThemeChoice.cream),
           ),
           _ThemeOption(
+            label: 'Black & Gold',
+            subtitle: 'Dark black · gold accent',
+            palette: AppColors.blackGold,
+            selected: provider.choice == AppThemeChoice.blackGold,
+            onTap: () => Navigator.pop(context, AppThemeChoice.blackGold),
+          ),
+          _ThemeOption(
             label: 'Carabinero',
             subtitle: 'Shell red · black outline',
             palette: AppColors.carabinero,
