@@ -94,7 +94,7 @@ class _SessionCard extends StatelessWidget {
     final unit = context.watch<WorkoutProvider>().weightUnit;
     final unitLabel = unit == WeightUnit.kg ? 'kg' : 'lbs';
     double displayWeight(double lbs) =>
-        unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+        unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
 
     // Group sets by exercise
     final Map<String, List<SetLog>> byExercise = {};

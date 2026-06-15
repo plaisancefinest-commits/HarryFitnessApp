@@ -8,6 +8,9 @@ import '../services/database_service.dart';
 
 enum WeightUnit { lbs, kg }
 
+/// Canonical lbs↔kg factor. Single source of truth — never use a raw literal.
+const double kLbsPerKg = 2.20462;
+
 enum TimerMode { stopwatch, countdown }
 
 enum WorkoutState { idle, stretching, active, resting, rating, complete }
@@ -126,7 +129,7 @@ class WorkoutProvider extends ChangeNotifier {
   void updateDraftWeight(String exerciseId, int setIndex, double displayWeight) {
     // Convert display-unit input back to canonical lbs for storage.
     final weightLbs = _weightUnit == WeightUnit.kg
-        ? displayWeight * 2.20462
+        ? displayWeight * kLbsPerKg
         : displayWeight;
     _drafts[exerciseId]?[setIndex].weight = weightLbs;
     notifyListeners();
@@ -136,7 +139,7 @@ class WorkoutProvider extends ChangeNotifier {
   double getDisplayWeight(String exerciseId, int setIndex) {
     final lbs = _drafts[exerciseId]?[setIndex].weight ?? 0;
     if (_weightUnit == WeightUnit.kg) {
-      return (lbs / 2.20462).roundToDouble();
+      return (lbs / kLbsPerKg).roundToDouble();
     }
     return lbs.roundToDouble();
   }
@@ -195,6 +198,7 @@ class WorkoutProvider extends ChangeNotifier {
       _state = WorkoutState.active;
     }
 
+    _saveProgress();
     notifyListeners();
   }
 
@@ -366,12 +370,14 @@ class WorkoutProvider extends ChangeNotifier {
     _state = WorkoutState.complete;
     _timer?.cancel();
 
-    await clearSavedProgress();
     await DatabaseService.instance.saveSession(_session!);
     if (_program != null) {
       await DatabaseService.instance
           .saveRestRecommendations(_program!.id, sessionRestAverages);
     }
+    // Clear in-progress data AFTER final persistence — a crash between these
+    // lines loses at most the cleanup, not the completed session.
+    await clearSavedProgress();
 
     notifyListeners();
   }
@@ -470,6 +476,7 @@ class WorkoutProvider extends ChangeNotifier {
         newIndex <= _currentExerciseIndex) {
       _currentExerciseIndex++;
     }
+    _saveProgress();
     notifyListeners();
     DatabaseService.instance.saveExerciseOrder(
         _currentDay!.id, exercises.map((e) => e.id).toList());

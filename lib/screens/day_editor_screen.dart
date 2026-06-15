@@ -8,8 +8,6 @@ import '../providers/workout_provider.dart';
 import '../theme/app_colors.dart';
 import '../widgets/add_activity_dialog.dart';
 
-const _kgFactor = 2.20462;
-
 /// Edit one day of a custom program: add/remove exercises and set
 /// sets / reps / target weight / rest / notes per exercise.
 /// Pops with the updated [WorkoutDay].
@@ -264,7 +262,7 @@ class _ExerciseEditorCardState extends State<_ExerciseEditorCard> {
   double? get _displayWeight {
     final lbs = widget.draft.weightLbs;
     if (lbs == null) return null;
-    return widget.unit == WeightUnit.kg ? lbs / _kgFactor : lbs;
+    return widget.unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
   }
 
   String _fmt(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
@@ -348,8 +346,7 @@ class _ExerciseEditorCardState extends State<_ExerciseEditorCard> {
                       widget.draft.weightLbs = null;
                     } else {
                       widget.draft.weightLbs = widget.unit == WeightUnit.kg
-                          ? double.parse(
-                              (parsed * _kgFactor).toStringAsFixed(1))
+                          ? parsed * kLbsPerKg
                           : parsed;
                     }
                     widget.onChanged();

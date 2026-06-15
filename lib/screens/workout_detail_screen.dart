@@ -155,7 +155,7 @@ class _WorkoutDetailScreenState extends State<WorkoutDetailScreen> {
     var line = '${pe.sets} sets × ${pe.reps} reps';
     final lbs = pe.targetWeightLbs;
     if (lbs != null) {
-      final v = unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+      final v = unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
       final label = unit == WeightUnit.kg ? 'kg' : 'lbs';
       line += ' @ ${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $label';
     }

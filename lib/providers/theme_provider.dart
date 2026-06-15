@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/app_colors.dart';
 
-enum AppThemeChoice { cream, blackGold, carabinero }
+enum AppThemeChoice { cream, blackGold, carabinero, knicks }
 
 /// Holds the selected visual theme and persists it across launches.
 class ThemeProvider extends ChangeNotifier {
@@ -17,6 +17,8 @@ class ThemeProvider extends ChangeNotifier {
         return AppColors.blackGold;
       case AppThemeChoice.carabinero:
         return AppColors.carabinero;
+      case AppThemeChoice.knicks:
+        return AppColors.knicks;
       case AppThemeChoice.cream:
         return AppColors.cream;
     }

@@ -289,6 +289,13 @@ class _DashboardTabState extends State<_DashboardTab> {
             selected: provider.choice == AppThemeChoice.carabinero,
             onTap: () => Navigator.pop(context, AppThemeChoice.carabinero),
           ),
+          _ThemeOption(
+            label: 'Knicks',
+            subtitle: 'Royal blue · orange accent',
+            palette: AppColors.knicks,
+            selected: provider.choice == AppThemeChoice.knicks,
+            onTap: () => Navigator.pop(context, AppThemeChoice.knicks),
+          ),
         ],
       ),
     );

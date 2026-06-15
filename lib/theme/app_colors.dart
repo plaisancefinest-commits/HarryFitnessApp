@@ -124,6 +124,25 @@ class AppColors extends ThemeExtension<AppColors> {
     cardOutline: Color(0xFF160708),
   );
 
+  /// Knicks home — deep blue base, orange accents, white text.
+  static const knicks = AppColors(
+    bg: Color(0xFF003DA5),         // Knicks royal blue
+    card: Color(0xFF0050C8),       // slightly lighter blue card
+    fill: Color(0xFF0046B0),       // mid blue
+    fillDeep: Color(0xFF003590),   // deeper blue
+    border: Color(0xFF1A5CC8),     // subtle blue border
+    borderStrong: Color(0xFF2969D0), // visible blue border
+    ink: Colors.white,
+    muted: Color(0xFFB8CCE8),      // faded blue-white
+    faint: Color(0xFF7DA0D4),      // pale blue
+    accent: Color(0xFFF15A29),     // Knicks orange
+    onAccent: Colors.white,
+    data: Color(0xFFF15A29),       // orange for charts/data
+    warm: Color(0xFFFF7849),       // lighter warm orange
+    green: Color(0xFF6BC46B),      // success green
+    cardOutline: Color(0xFF1A5CC8), // blue outline on cards
+  );
+
   @override
   AppColors copyWith({Color? bg}) => this;
 

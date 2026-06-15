@@ -56,7 +56,7 @@ class ExerciseDetailScreen extends StatelessWidget {
     String? weightText;
     final lbs = planned.targetWeightLbs;
     if (lbs != null) {
-      final v = unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+      final v = unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
       weightText = '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $unitLabel';
     }
 

@@ -7,8 +7,6 @@ import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 import '../theme/app_colors.dart';
 
-const _kgFactor = 2.20462;
-
 enum _Range { w1, m1, m3, ytd, y1, all }
 
 /// Home-screen card: Robinhood-style line graph of body weight with a
@@ -46,10 +44,10 @@ class _WeightProgressCardState extends State<WeightProgressCard> {
   }
 
   double _toLbs(double v, WeightUnit unit) =>
-      unit == WeightUnit.kg ? v * _kgFactor : v;
+      unit == WeightUnit.kg ? v * kLbsPerKg : v;
 
   double _fromLbs(double lbs, WeightUnit unit) =>
-      unit == WeightUnit.kg ? lbs / _kgFactor : lbs;
+      unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
 
   String _fmt(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
 
@@ -567,10 +565,10 @@ class _GoalSheetState extends State<_GoalSheet> {
   late DateTime _endDate;
 
   double _fromLbs(double lbs) =>
-      widget.unit == WeightUnit.kg ? lbs / _kgFactor : lbs;
+      widget.unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
 
   double _toLbs(double v) =>
-      widget.unit == WeightUnit.kg ? v * _kgFactor : v;
+      widget.unit == WeightUnit.kg ? v * kLbsPerKg : v;
 
   String _fmt(double v) => v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
 

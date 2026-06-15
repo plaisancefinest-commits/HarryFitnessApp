@@ -797,7 +797,7 @@ class _TargetInfo extends StatelessWidget {
   const _TargetInfo({required this.exercise, required this.unit});
 
   String _formatWeight(double lbs) {
-    final v = unit == WeightUnit.kg ? lbs / 2.20462 : lbs;
+    final v = unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
     final label = unit == WeightUnit.kg ? 'kg' : 'lbs';
     return '${v.toStringAsFixed(v % 1 == 0 ? 0 : 1)} $label';
   }
