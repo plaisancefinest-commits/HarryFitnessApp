@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../data/program_json.dart';
 import '../models/body_weight.dart';
+import '../models/picture_challenge.dart';
 import '../models/exercise.dart';
 import '../models/recovery_check.dart';
 import '../models/program.dart';
@@ -29,7 +30,7 @@ class DatabaseService {
 
   Future<Database> _initDb() async {
     final path = join(await getDatabasesPath(), 'harry_fitness.db');
-    return openDatabase(path, version: 2, onCreate: (db, v) async {
+    return openDatabase(path, version: 3, onCreate: (db, v) async {
       await db.execute('''
         CREATE TABLE sessions (
           id TEXT PRIMARY KEY, program_id TEXT, workout_day_id TEXT,
@@ -64,6 +65,14 @@ class DatabaseService {
             id TEXT PRIMARY KEY, program_id TEXT, week_start TEXT,
             rating INTEGER, created_at TEXT
           )''');
+      }
+      if (oldVersion < 3) {
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_set_logs_exercise ON set_logs(exercise_id)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)');
+        await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_sessions_program ON sessions(program_id)');
       }
     });
   }
@@ -281,6 +290,117 @@ class DatabaseService {
       if (s.programId == programId) return s.workoutDayId;
     }
     return null;
+  }
+
+  // ─── Targeted Stats Queries ─────────────────────────────────────────────────
+
+  /// All [SetLog]s for a single exercise across all completed sessions.
+  /// Used for PR detection. Ordered by completedAt ascending.
+  Future<List<SetLog>> getSetLogsForExercise(String exerciseId) async {
+    if (kIsWeb) {
+      final all = await _prefGetSessions();
+      final sets = <SetLog>[];
+      for (final s in all) {
+        if (s['is_complete'] != true) continue;
+        for (final sl in (s['sets'] as List)) {
+          if (sl['exercise_id'] == exerciseId) {
+            sets.add(SetLog(
+              id: sl['id'],
+              exerciseId: sl['exercise_id'],
+              setNumber: sl['set_number'],
+              weight: (sl['weight'] as num).toDouble(),
+              reps: sl['reps'],
+              notes: sl['notes'],
+              completedAt: DateTime.parse(sl['completed_at']),
+            ));
+          }
+        }
+      }
+      sets.sort((a, b) => a.completedAt.compareTo(b.completedAt));
+      return sets;
+    } else {
+      final db = await _sqlite;
+      final rows = await db.rawQuery('''
+        SELECT sl.* FROM set_logs sl
+        INNER JOIN sessions s ON sl.session_id = s.id
+        WHERE s.is_complete = 1 AND sl.exercise_id = ?
+        ORDER BY sl.completed_at ASC
+      ''', [exerciseId]);
+      return rows
+          .map((r) => SetLog(
+                id: r['id'] as String,
+                exerciseId: r['exercise_id'] as String,
+                setNumber: r['set_number'] as int,
+                weight: r['weight'] as double,
+                reps: r['reps'] as int,
+                notes: r['notes'] as String?,
+                completedAt: DateTime.parse(r['completed_at'] as String),
+              ))
+          .toList();
+    }
+  }
+
+  /// Number of completed sessions in a date range.
+  Future<int> getSessionCountInRange(DateTime start, DateTime end) async {
+    if (kIsWeb) {
+      final all = await _prefGetSessions();
+      return all.where((s) {
+        if (s['is_complete'] != true) return false;
+        final d = DateTime.parse(s['date']);
+        return !d.isBefore(start) && !d.isAfter(end);
+      }).length;
+    } else {
+      final db = await _sqlite;
+      final result = await db.rawQuery(
+        'SELECT COUNT(*) as c FROM sessions WHERE is_complete = 1 AND date >= ? AND date <= ?',
+        [start.toIso8601String(), end.toIso8601String()],
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    }
+  }
+
+  /// Day rating values in a date range, for averaging.
+  Future<List<int>> getDayRatingsInRange(DateTime start, DateTime end) async {
+    if (kIsWeb) {
+      final all = await _prefGetSessions();
+      return all
+          .where((s) {
+            if (s['is_complete'] != true || s['day_rating'] == null) return false;
+            final d = DateTime.parse(s['date']);
+            return !d.isBefore(start) && !d.isAfter(end);
+          })
+          .map((s) => s['day_rating'] as int)
+          .toList();
+    } else {
+      final db = await _sqlite;
+      final rows = await db.rawQuery(
+        'SELECT day_rating FROM sessions WHERE is_complete = 1 AND day_rating IS NOT NULL AND date >= ? AND date <= ?',
+        [start.toIso8601String(), end.toIso8601String()],
+      );
+      return rows.map((r) => r['day_rating'] as int).toList();
+    }
+  }
+
+  /// Earliest completed session date for a program (block calculation).
+  Future<DateTime?> getEarliestSessionDate(String programId) async {
+    if (kIsWeb) {
+      final all = await _prefGetSessions();
+      DateTime? earliest;
+      for (final s in all) {
+        if (s['is_complete'] != true || s['program_id'] != programId) continue;
+        final d = DateTime.parse(s['date']);
+        if (earliest == null || d.isBefore(earliest)) earliest = d;
+      }
+      return earliest;
+    } else {
+      final db = await _sqlite;
+      final result = await db.rawQuery(
+        'SELECT MIN(date) as d FROM sessions WHERE program_id = ? AND is_complete = 1',
+        [programId],
+      );
+      final raw = result.first['d'] as String?;
+      return raw != null ? DateTime.parse(raw) : null;
+    }
   }
 
   // ─── Body-weight goal & weigh-ins ───────────────────────────────────────────
@@ -635,5 +755,36 @@ class DatabaseService {
   Future<void> saveWeightUnit(String unit) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_weightUnitKey, unit);
+  }
+
+  // ─── Picture Challenge ─────────────────────────────────────────────────────
+
+  static const _pictureChallengeKey = 'picture_challenge';
+
+  Future<void> savePictureChallenge(PictureChallenge challenge) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pictureChallengeKey, challenge.encode());
+  }
+
+  Future<PictureChallenge?> getPictureChallenge() async {
+    final prefs = await SharedPreferences.getInstance();
+    return PictureChallenge.decode(prefs.getString(_pictureChallengeKey));
+  }
+
+  Future<void> clearPictureChallenge() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pictureChallengeKey);
+  }
+
+  // ─── Program Weeks ─────────────────────────────────────────────────────────
+
+  Future<void> saveProgramWeeks(String programId, int weeks) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('program_weeks_$programId', weeks);
+  }
+
+  Future<int?> getProgramWeeks(String programId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('program_weeks_$programId');
   }
 }

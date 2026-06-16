@@ -2,9 +2,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:vibration/vibration.dart';
 import 'package:uuid/uuid.dart';
+import '../models/personal_record.dart';
+import '../models/picture_challenge.dart';
 import '../models/program.dart';
 import '../models/workout_session.dart';
 import '../services/database_service.dart';
+import '../services/picture_challenge_service.dart';
+import '../services/pr_service.dart';
 
 enum WeightUnit { lbs, kg }
 
@@ -52,6 +56,19 @@ class WorkoutProvider extends ChangeNotifier {
   int _currentStretchIndex = 0;
 
   WorkoutSession? _session;
+
+  // ─── Picture Reveal ─────────────────────────────────────────────────────
+  bool _revealStepEarned = false;
+  PictureChallenge? _activeChallenge;
+  double _previousRevealProgress = 0.0;
+
+  bool get revealStepEarned => _revealStepEarned;
+  PictureChallenge? get activeChallenge => _activeChallenge;
+  double get previousRevealProgress => _previousRevealProgress;
+
+  // ─── Post-Workout Summary ──────────────────────────────────────────────
+  List<ExerciseSummary>? _workoutSummary;
+  List<ExerciseSummary>? get workoutSummary => _workoutSummary;
 
   WorkoutProvider() {
     _loadWeightUnit();
@@ -370,16 +387,79 @@ class WorkoutProvider extends ChangeNotifier {
     _state = WorkoutState.complete;
     _timer?.cancel();
 
-    await DatabaseService.instance.saveSession(_session!);
+    // ── Picture Reveal: check BEFORE saving the session ──
+    _revealStepEarned = false;
+    _activeChallenge = null;
     if (_program != null) {
+      final challenge =
+          await PictureChallengeService.getActiveChallenge(_program!.id);
+      if (challenge != null) {
+        _previousRevealProgress = challenge.revealProgress;
+        final isFirst =
+            await PictureChallengeService.isFirstWorkoutToday(_program!.id);
+        // Save session first (so it's persisted even if reveal logic fails)
+        await DatabaseService.instance.saveSession(_session!);
+        if (isFirst && challenge.completedWorkouts < challenge.totalWorkouts) {
+          _activeChallenge = await PictureChallengeService.recordProgress();
+          _revealStepEarned = true;
+        } else {
+          _activeChallenge = challenge;
+        }
+      } else {
+        await DatabaseService.instance.saveSession(_session!);
+      }
       await DatabaseService.instance
           .saveRestRecommendations(_program!.id, sessionRestAverages);
+    } else {
+      await DatabaseService.instance.saveSession(_session!);
     }
+
+    // ── Compute post-workout summary with PR detection ──
+    await _computeWorkoutSummary();
+
     // Clear in-progress data AFTER final persistence — a crash between these
     // lines loses at most the cleanup, not the completed session.
     await clearSavedProgress();
 
     notifyListeners();
+  }
+
+  Future<void> _computeWorkoutSummary() async {
+    if (_session == null || _session!.sets.isEmpty) {
+      _workoutSummary = null;
+      return;
+    }
+
+    // Group this session's sets by exercise
+    final byExercise = <String, List<SetLog>>{};
+    for (final s in _session!.sets) {
+      byExercise.putIfAbsent(s.exerciseId, () => []).add(s);
+    }
+
+    // For each exercise, load historical sets and compute PRs BEFORE this session
+    final previousPRs = <String, ExercisePRSet>{};
+    for (final exerciseId in byExercise.keys) {
+      final allSets =
+          await DatabaseService.instance.getSetLogsForExercise(exerciseId);
+      // Exclude sets from the current session (they were just saved)
+      final historicalSets = allSets
+          .where((s) => !_session!.sets.any((ss) => ss.id == s.id))
+          .toList();
+      previousPRs[exerciseId] =
+          PRService.computeAllTimePRs(exerciseId, historicalSets);
+    }
+
+    // Detect new PRs
+    final newPRs = PRService.detectNewPRs(_session!.sets, previousPRs);
+
+    // Build summaries
+    _workoutSummary = byExercise.entries
+        .map((e) => PRService.summarizeExercise(
+              e.key,
+              e.value,
+              newPRs: newPRs[e.key] ?? [],
+            ))
+        .toList();
   }
 
   void _startCountdown() {

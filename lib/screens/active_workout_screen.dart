@@ -10,6 +10,8 @@ import '../providers/workout_provider.dart';
 import '../services/database_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/muscle_diagram.dart';
+import '../widgets/picture_reveal_widget.dart';
+import '../widgets/workout_summary_card.dart';
 import 'active_workout_overview_screen.dart';
 import 'recovery_check_screen.dart';
 
@@ -512,38 +514,77 @@ class _ActiveWorkoutScreenState extends State<ActiveWorkoutScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 40),
-              Text('Workout\nComplete',
-                  style: Theme.of(context).textTheme.displaySmall),
-              const SizedBox(height: 16),
-              Text(
-                'Great work. Session saved.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 24),
-              // Week rating prompt (Thu–Sun, if not already rated)
-              if (programId != null)
-                _WeekRatingPrompt(programId: programId),
-              // End-of-week recovery (after last workout of the week)
-              if (programId != null)
-                _EndOfWeekRecoveryPrompt(
-                  program: widget.program,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 40),
+                    Text('Workout\nComplete',
+                        style: Theme.of(context).textTheme.displaySmall),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Great work. Session saved.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    // ── Workout Summary ──
+                    if (provider.workoutSummary != null &&
+                        provider.workoutSummary!.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      WorkoutSummaryCard(
+                        summaries: provider.workoutSummary!,
+                        unit: provider.weightUnit,
+                      ),
+                    ],
+                    // ── Picture Reveal ──
+                    if (provider.revealStepEarned &&
+                        provider.activeChallenge != null) ...[
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 280,
+                        child: PictureRevealWidget(
+                          imagePath: provider.activeChallenge!.imageAssetPath,
+                          progress: provider.activeChallenge!.revealProgress,
+                          previousProgress: provider.previousRevealProgress,
+                          animate: true,
+                          fullyRevealed:
+                              provider.activeChallenge!.isFullyRevealed,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${provider.activeChallenge!.completedWorkouts}/${provider.activeChallenge!.totalWorkouts} workouts',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    // Week rating prompt (Thu–Sun, if not already rated)
+                    if (programId != null)
+                      _WeekRatingPrompt(programId: programId),
+                    // End-of-week recovery (after last workout of the week)
+                    if (programId != null)
+                      _EndOfWeekRecoveryPrompt(
+                        program: widget.program,
+                      ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
-              const Spacer(),
-              SizedBox(
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Done'),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

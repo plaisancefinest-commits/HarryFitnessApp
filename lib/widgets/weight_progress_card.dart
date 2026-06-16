@@ -564,6 +564,13 @@ class _GoalSheetState extends State<_GoalSheet> {
   late DateTime _startDate;
   late DateTime _endDate;
 
+  // Preserve canonical lbs from an existing goal so re-saving without editing
+  // doesn't accumulate rounding drift through display→parse→convert cycles.
+  double? _originalStartLbs;
+  double? _originalGoalLbs;
+  bool _startEdited = false;
+  bool _goalEdited = false;
+
   double _fromLbs(double lbs) =>
       widget.unit == WeightUnit.kg ? lbs / kLbsPerKg : lbs;
 
@@ -576,6 +583,8 @@ class _GoalSheetState extends State<_GoalSheet> {
   void initState() {
     super.initState();
     final g = widget.goal;
+    _originalStartLbs = g?.startWeightLbs;
+    _originalGoalLbs = g?.goalWeightLbs;
     _startCtrl = TextEditingController(
         text: g != null ? _fmt(_fromLbs(g.startWeightLbs)) : '');
     _goalCtrl = TextEditingController(
@@ -618,9 +627,13 @@ class _GoalSheetState extends State<_GoalSheet> {
     Navigator.pop(
       context,
       WeightGoal(
-        startWeightLbs: _toLbs(start),
+        // Use the original canonical lbs if the user didn't touch the field —
+        // avoids drift from display→parse→convert round-trips.
+        startWeightLbs:
+            _startEdited ? _toLbs(start) : (_originalStartLbs ?? _toLbs(start)),
         startDate: _startDate,
-        goalWeightLbs: _toLbs(goalW),
+        goalWeightLbs:
+            _goalEdited ? _toLbs(goalW) : (_originalGoalLbs ?? _toLbs(goalW)),
         endDate: _endDate,
       ),
     );
@@ -649,6 +662,7 @@ class _GoalSheetState extends State<_GoalSheet> {
                   controller: _startCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => _startEdited = true,
                   decoration: InputDecoration(
                     labelText: 'Starting weight',
                     suffixText: unitLabel,
@@ -661,6 +675,7 @@ class _GoalSheetState extends State<_GoalSheet> {
                   controller: _goalCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => _goalEdited = true,
                   decoration: InputDecoration(
                     labelText: 'Goal weight',
                     suffixText: unitLabel,

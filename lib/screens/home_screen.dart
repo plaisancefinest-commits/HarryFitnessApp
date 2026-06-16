@@ -9,6 +9,7 @@ import '../data/exercise_library.dart';
 import '../theme/app_colors.dart';
 import 'recovery_check_screen.dart';
 import '../widgets/cardio_card.dart';
+import '../widgets/set_program_weeks_dialog.dart';
 import '../widgets/weight_progress_card.dart';
 import 'active_workout_screen.dart';
 import 'history_screen.dart';
@@ -302,6 +303,20 @@ class _DashboardTabState extends State<_DashboardTab> {
     if (choice != null) await provider.setChoice(choice);
   }
 
+  Future<void> _setWeeks(BuildContext context) async {
+    if (_program == null) return;
+    final currentWeeks =
+        await DatabaseService.instance.getProgramWeeks(_program!.id);
+    if (!context.mounted) return;
+    await showDialog<int>(
+      context: context,
+      builder: (context) => SetProgramWeeksDialog(
+        program: _program!,
+        currentWeeks: currentWeeks,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final program = _program;
@@ -338,6 +353,12 @@ class _DashboardTabState extends State<_DashboardTab> {
                   icon: Icon(Icons.palette_outlined,
                       size: 22, color: context.colors.muted),
                   tooltip: 'Theme',
+                ),
+                IconButton(
+                  onPressed: () => _setWeeks(context),
+                  icon: Icon(Icons.timer_outlined,
+                      size: 22, color: context.colors.muted),
+                  tooltip: 'Program Duration',
                 ),
               ],
             ),
