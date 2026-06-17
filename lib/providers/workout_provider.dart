@@ -272,11 +272,15 @@ class WorkoutProvider extends ChangeNotifier {
 
     if (_timerMode == TimerMode.countdown) {
       // Prefer learned rest averages, then the program's prescribed rest.
+      // Ignore learned values under 15s — those were skips, not real rest.
       final plannedRest = _currentDay?.exercises
           .where((pe) => pe.exercise.id == exerciseId)
           .firstOrNull
           ?.restSeconds;
-      _timerSeconds = recommendedRest[exerciseId] ?? plannedRest ?? 90;
+      final learned = recommendedRest[exerciseId];
+      _timerSeconds = (learned != null && learned >= 15)
+          ? learned
+          : plannedRest ?? 90;
       _timerInitialSeconds = _timerSeconds;
       _startCountdown();
     } else {
@@ -316,11 +320,15 @@ class WorkoutProvider extends ChangeNotifier {
 
     if (_restStartTime != null && currentExercise != null) {
       final elapsed = DateTime.now().difference(_restStartTime!).inSeconds;
-      _session!.rests.add(RestLog(
-        exerciseId: currentExercise!.exercise.id,
-        setNumber: _currentSet,
-        restSeconds: elapsed,
-      ));
+      // Only log rest if it was a real rest period (5s+). Skipped rests
+      // pollute the learned-average and produce 1-second timer bugs.
+      if (elapsed >= 5) {
+        _session!.rests.add(RestLog(
+          exerciseId: currentExercise!.exercise.id,
+          setNumber: _currentSet,
+          restSeconds: elapsed,
+        ));
+      }
       _restStartTime = null;
     }
 

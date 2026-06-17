@@ -189,6 +189,18 @@ class DatabaseService {
     }
   }
 
+  Future<void> clearRestRecommendations(String programId) async {
+    if (kIsWeb) {
+      final recs = await _prefGetRecs();
+      recs.remove(programId);
+      await _prefSaveRecs(recs);
+    } else {
+      final db = await _sqlite;
+      await db.delete('rest_recommendations',
+          where: 'program_id = ?', whereArgs: [programId]);
+    }
+  }
+
   Future<Map<String, int>> getRestRecommendations(String programId) async {
     if (kIsWeb) {
       final recs = await _prefGetRecs();

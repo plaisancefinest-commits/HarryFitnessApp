@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/sample_programs.dart';
 import '../models/program.dart';
 import '../models/recovery_check.dart';
@@ -90,6 +91,14 @@ class _DashboardTabState extends State<_DashboardTab> {
     await _applyExerciseOverrides(db, program);
     final count = await db.getSessionsThisWeek();
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
+    // One-time reset of stale rest recommendations (skipped rests logged as
+    // 1-second averages were polluting the countdown timer). Remove after
+    // one release cycle.
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey('rest_recs_reset_v1')) {
+      await db.clearRestRecommendations(program.id);
+      await prefs.setBool('rest_recs_reset_v1', true);
+    }
     final recs = hasHistory ? await db.getRestRecommendations(program.id) : <String, int>{};
     final lastDayId = await db.getLastCompletedDayId(program.id);
     final inProgress = await db.getInProgressWorkout();
