@@ -19,6 +19,47 @@ class ActiveWorkoutOverviewScreen extends StatefulWidget {
 
 class _ActiveWorkoutOverviewScreenState
     extends State<ActiveWorkoutOverviewScreen> {
+  bool _editMode = false;
+  int? _reorderIndex;
+
+  Future<bool> _confirmRemove(BuildContext context, String exerciseName) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final c = ctx.colors;
+        return AlertDialog(
+          backgroundColor: c.card,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Remove Exercise',
+              style: Theme.of(ctx).textTheme.titleMedium),
+          content: Text('Remove "$exerciseName" from this workout?',
+              style: Theme.of(ctx).textTheme.bodyMedium),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('No', style: TextStyle(color: c.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Yes',
+                  style: TextStyle(color: Color(0xFFE53935))),
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  void _moveExercise(WorkoutProvider provider, int from, int to) {
+    final exercises = provider.currentDay?.exercises;
+    if (exercises == null) return;
+    if (to < 0 || to >= exercises.length) return;
+    provider.reorderExercises(from, to);
+    setState(() => _reorderIndex = to);
+  }
+
   Future<void> _addExercise(WorkoutProvider provider) async {
     final exercises = provider.currentDay?.exercises ?? [];
     final usedIds = exercises.map((e) => e.exercise.id).toSet();
@@ -60,6 +101,11 @@ class _ActiveWorkoutOverviewScreenState
         if (day == null) return const SizedBox.shrink();
         final exercises = day.exercises;
 
+        // Clear reorder index if it's out of bounds
+        if (_reorderIndex != null && _reorderIndex! >= exercises.length) {
+          _reorderIndex = null;
+        }
+
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           appBar: AppBar(
@@ -67,99 +113,322 @@ class _ActiveWorkoutOverviewScreenState
             elevation: 0,
             leading: IconButton(
               icon: Icon(Icons.arrow_back, color: c.ink),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                _reorderIndex = null;
+                Navigator.pop(context);
+              },
             ),
             title: Text('Workout Overview',
                 style: Theme.of(context).textTheme.titleMedium),
+            actions: [
+              TextButton(
+                onPressed: () => setState(() {
+                  _editMode = !_editMode;
+                  _reorderIndex = null;
+                }),
+                child: Text(
+                  _editMode ? 'Done' : 'Edit',
+                  style: TextStyle(
+                    color: _editMode ? const Color(0xFFE53935) : c.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
           floatingActionButton: FloatingActionButton(
             backgroundColor: c.accent,
             onPressed: () => _addExercise(provider),
             child: Icon(Icons.add, color: c.onAccent),
           ),
-          body: ReorderableListView.builder(
-            padding: const EdgeInsets.all(24),
-            itemCount: exercises.length,
-            buildDefaultDragHandles: false,
-            onReorder: (oldIndex, newIndex) {
-              provider.reorderExercises(oldIndex, newIndex);
+          body: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              // Tap empty space to exit reorder mode
+              if (_reorderIndex != null) {
+                setState(() => _reorderIndex = null);
+              }
             },
-            itemBuilder: (context, i) {
-              final ex = exercises[i];
-              final isCurrent = i == provider.currentExerciseIndex;
-              final isComplete =
-                  provider.isExerciseComplete(ex.exercise.id);
+            child: ListView.builder(
+              padding: const EdgeInsets.all(24),
+              itemCount: exercises.length,
+              itemBuilder: (context, i) {
+                final ex = exercises[i];
+                final isCurrent = i == provider.currentExerciseIndex;
+                final isComplete =
+                    provider.isExerciseComplete(ex.exercise.id);
+                final isReordering = _reorderIndex == i;
 
-              return Card(
-                key: ValueKey(ex.id),
-                margin: const EdgeInsets.only(bottom: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: isCurrent
-                      ? BorderSide(color: c.accent, width: 2)
-                      : BorderSide.none,
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
+                return _ExerciseCard(
+                  key: ValueKey(ex.id),
+                  exercise: ex,
+                  index: i,
+                  totalCount: exercises.length,
+                  isCurrent: isCurrent,
+                  isComplete: isComplete,
+                  isReordering: isReordering,
+                  editMode: _editMode,
                   onTap: () {
+                    if (_reorderIndex != null) {
+                      // Tap any card while reordering → exit reorder mode
+                      setState(() => _reorderIndex = null);
+                      return;
+                    }
+                    if (_editMode) return;
                     if (i != provider.currentExerciseIndex) {
                       provider.jumpToExercise(i);
                     }
                     Navigator.pop(context);
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        ReorderableDragStartListener(
-                          index: i,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: Icon(Icons.drag_indicator,
-                                color: c.borderStrong, size: 20),
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                ex.exercise.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      color: isComplete ? c.faint : c.ink,
-                                    ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${ex.sets} sets × ${ex.reps} reps',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: c.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (isComplete)
-                          Icon(Icons.check_circle, color: c.green, size: 22)
-                        else if (isCurrent)
-                          Icon(Icons.play_circle_filled,
-                              color: c.accent, size: 22)
-                        else
-                          Icon(Icons.radio_button_unchecked,
-                              color: c.borderStrong, size: 22),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+                  onDoubleTap: () {
+                    setState(() {
+                      _reorderIndex = _reorderIndex == i ? null : i;
+                    });
+                  },
+                  onLongPress: () async {
+                    if (exercises.length <= 1) return;
+                    final confirmed =
+                        await _confirmRemove(context, ex.exercise.name);
+                    if (confirmed && mounted) {
+                      if (_reorderIndex == i) _reorderIndex = null;
+                      provider.removeExerciseMidWorkout(i);
+                      setState(() {});
+                    }
+                  },
+                  onMoveUp: () => _moveExercise(provider, i, i - 1),
+                  onMoveDown: () => _moveExercise(provider, i, i + 1),
+                  onRemove: () async {
+                    final confirmed =
+                        await _confirmRemove(context, ex.exercise.name);
+                    if (confirmed && mounted) {
+                      if (_reorderIndex == i) _reorderIndex = null;
+                      provider.removeExerciseMidWorkout(i);
+                      setState(() {});
+                    }
+                  },
+                  colors: c,
+                );
+              },
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// Individual exercise card with shake animation for reorder mode.
+class _ExerciseCard extends StatefulWidget {
+  final PlannedExercise exercise;
+  final int index;
+  final int totalCount;
+  final bool isCurrent;
+  final bool isComplete;
+  final bool isReordering;
+  final bool editMode;
+  final VoidCallback onTap;
+  final VoidCallback onDoubleTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
+  final VoidCallback onRemove;
+  final AppColors colors;
+
+  const _ExerciseCard({
+    super.key,
+    required this.exercise,
+    required this.index,
+    required this.totalCount,
+    required this.isCurrent,
+    required this.isComplete,
+    required this.isReordering,
+    required this.editMode,
+    required this.onTap,
+    required this.onDoubleTap,
+    required this.onLongPress,
+    required this.onMoveUp,
+    required this.onMoveDown,
+    required this.onRemove,
+    required this.colors,
+  });
+
+  @override
+  State<_ExerciseCard> createState() => _ExerciseCardState();
+}
+
+class _ExerciseCardState extends State<_ExerciseCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _shakeController;
+  late final Animation<double> _shakeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _shakeAnimation = Tween<double>(begin: -0.012, end: 0.012).animate(
+      CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
+    );
+    if (widget.isReordering) {
+      _shakeController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExerciseCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isReordering && !oldWidget.isReordering) {
+      _shakeController.repeat(reverse: true);
+    } else if (!widget.isReordering && oldWidget.isReordering) {
+      _shakeController.stop();
+      _shakeController.value = 0.5; // center position (no rotation)
+    }
+  }
+
+  @override
+  void dispose() {
+    _shakeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.colors;
+    final ex = widget.exercise;
+
+    Widget card = Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: widget.isReordering ? 6 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: widget.isReordering
+            ? BorderSide(color: c.accent, width: 2)
+            : widget.isCurrent
+                ? BorderSide(color: c.accent, width: 2)
+                : BorderSide.none,
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onDoubleTap: widget.onDoubleTap,
+        onLongPress: widget.isReordering ? null : widget.onLongPress,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              // Arrow buttons when in reorder mode
+              if (widget.isReordering) ...[
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _arrowButton(
+                      icon: Icons.keyboard_arrow_up_rounded,
+                      enabled: widget.index > 0,
+                      onTap: widget.onMoveUp,
+                      colors: c,
+                    ),
+                    const SizedBox(height: 2),
+                    _arrowButton(
+                      icon: Icons.keyboard_arrow_down_rounded,
+                      enabled: widget.index < widget.totalCount - 1,
+                      onTap: widget.onMoveDown,
+                      colors: c,
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 10),
+              ],
+              // Exercise info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ex.exercise.name,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(
+                            color: widget.isComplete ? c.faint : c.ink,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${ex.sets} sets × ${ex.reps} reps',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+              // Status / edit icons
+              if (widget.editMode && widget.totalCount > 1)
+                GestureDetector(
+                  onTap: widget.onRemove,
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.cancel,
+                        color: Color(0xFFE53935), size: 22),
+                  ),
+                )
+              else if (widget.isReordering)
+                Icon(Icons.open_with_rounded, color: c.accent, size: 22)
+              else if (widget.isComplete)
+                Icon(Icons.check_circle, color: c.green, size: 22)
+              else if (widget.isCurrent)
+                Icon(Icons.play_circle_filled, color: c.accent, size: 22)
+              else
+                Icon(Icons.radio_button_unchecked,
+                    color: c.borderStrong, size: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Wrap with shake animation when in reorder mode
+    if (widget.isReordering) {
+      return AnimatedBuilder(
+        animation: _shakeAnimation,
+        builder: (context, child) {
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.rotationZ(_shakeAnimation.value),
+            child: child,
+          );
+        },
+        child: card,
+      );
+    }
+
+    return card;
+  }
+
+  Widget _arrowButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+    required AppColors colors,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: enabled ? colors.accent : colors.fill,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? colors.onAccent : colors.faint,
+        ),
+      ),
     );
   }
 }

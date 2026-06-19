@@ -570,6 +570,40 @@ class WorkoutProvider extends ChangeNotifier {
         _currentDay!.id, exercises.map((e) => e.id).toList());
   }
 
+  void removeExerciseMidWorkout(int index) {
+    if (_currentDay == null) return;
+    final exercises = _currentDay!.exercises;
+    if (exercises.length <= 1) return; // keep at least 1 exercise
+    if (index < 0 || index >= exercises.length) return;
+
+    final removed = exercises.removeAt(index);
+    _drafts.remove(removed.exercise.id);
+
+    // Remove any logged sets/rests for this exercise
+    _session?.sets.removeWhere((s) => s.exerciseId == removed.exercise.id);
+    _session?.rests.removeWhere((r) => r.exerciseId == removed.exercise.id);
+
+    // Update order fields
+    for (var i = 0; i < exercises.length; i++) {
+      exercises[i].order = i;
+    }
+
+    // Adjust current exercise index
+    if (_currentExerciseIndex >= exercises.length) {
+      _currentExerciseIndex = exercises.length - 1;
+    } else if (index < _currentExerciseIndex) {
+      _currentExerciseIndex--;
+    } else if (index == _currentExerciseIndex) {
+      _currentSet = 1;
+      _state = WorkoutState.active;
+    }
+
+    _saveProgress();
+    notifyListeners();
+    DatabaseService.instance.saveExerciseOrder(
+        _currentDay!.id, exercises.map((e) => e.id).toList());
+  }
+
   void addExerciseMidWorkout(PlannedExercise exercise) {
     if (_currentDay == null) return;
     _currentDay!.exercises.add(exercise);
