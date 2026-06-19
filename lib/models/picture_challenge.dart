@@ -25,10 +25,8 @@ class PictureChallenge {
   double get revealProgress =>
       totalWorkouts > 0 ? (completedWorkouts / totalWorkouts).clamp(0.0, 1.0) : 0.0;
 
-  /// True only when every workout is done AND the goal date has passed.
-  bool get isFullyRevealed =>
-      completedWorkouts >= totalWorkouts &&
-      !DateTime.now().isBefore(goalEndDate);
+  /// True when every workout in the program is done.
+  bool get isFullyRevealed => completedWorkouts >= totalWorkouts;
 
   Map<String, dynamic> toJson() => {
         'id': id,

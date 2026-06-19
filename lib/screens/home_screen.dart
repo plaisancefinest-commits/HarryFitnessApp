@@ -59,7 +59,10 @@ class _DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<_DashboardTab> {
-  int _completedThisWeek = 0;
+  int _currentRotation = 1;
+  int _sessionsInRotation = 0;
+  bool _rotationJustCompleted = false;
+  int? _totalRotations;
   bool _isFirstWeek = true;
   Map<String, int> _restRecommendations = {};
   String? _lastCompletedDayId;
@@ -89,7 +92,11 @@ class _DashboardTabState extends State<_DashboardTab> {
     );
 
     await _applyExerciseOverrides(db, program);
-    final count = await db.getSessionsThisWeek();
+    final totalSessions =
+        await db.getCompletedSessionCountForProgram(program.id);
+    final rotationState =
+        DatabaseService.computeRotation(totalSessions, program.days.length);
+    final programWeeks = await db.getProgramWeeks(program.id);
     final hasHistory = await db.hasCompletedSessionForProgram(program.id);
     // One-time reset of stale rest recommendations (skipped rests logged as
     // 1-second averages were polluting the countdown timer). Remove after
@@ -105,7 +112,10 @@ class _DashboardTabState extends State<_DashboardTab> {
     if (mounted) {
       setState(() {
         _program = program;
-        _completedThisWeek = count;
+        _currentRotation = rotationState.rotation;
+        _sessionsInRotation = rotationState.sessionsInRotation;
+        _rotationJustCompleted = rotationState.justCompleted;
+        _totalRotations = programWeeks;
         _isFirstWeek = !hasHistory;
         _restRecommendations = recs;
         _lastCompletedDayId = lastDayId;
@@ -120,20 +130,17 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   Future<void> _checkRecovery(Program program) async {
-    final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
     final db = DatabaseService.instance;
 
-    // Mon-Tue: pre-week recovery check on dashboard
-    // End-of-week check is now triggered on the workout complete screen
-    if (now.weekday > 2) {
+    // Show pre-rotation recovery check when a rotation just completed
+    if (!_rotationJustCompleted) {
       if (mounted) setState(() => _showRecoveryCheck = false);
       return;
     }
 
+    final nextRotation = _currentRotation + 1;
     final existing =
-        await db.getRecoveryCheckForWeek(program.id, monday, true);
+        await db.getRecoveryCheckForRotation(program.id, nextRotation, true);
     if (mounted) {
       setState(() {
         _showRecoveryCheck = existing == null;
@@ -145,6 +152,9 @@ class _DashboardTabState extends State<_DashboardTab> {
   Future<void> _openRecoveryCheck() async {
     if (_program == null) return;
     final muscles = muscleGroupsForProgram(_program!.days);
+    final rotNum = _recoveryIsPreWeek
+        ? _currentRotation + 1
+        : _currentRotation;
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -152,6 +162,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           programId: _program!.id,
           muscleGroups: muscles,
           isPreWeek: _recoveryIsPreWeek,
+          rotationNumber: rotNum,
         ),
       ),
     );
@@ -381,7 +392,13 @@ class _DashboardTabState extends State<_DashboardTab> {
               const SizedBox(height: 16),
             ],
 
-            _ThisWeekCard(completedCount: _completedThisWeek),
+            _ThisWeekCard(
+              currentRotation: _currentRotation,
+              sessionsInRotation: _sessionsInRotation,
+              totalDaysPerRotation: program.days.length,
+              totalRotations: _totalRotations,
+              justCompleted: _rotationJustCompleted,
+            ),
             const SizedBox(height: 16),
 
             const WeightProgressCard(),
@@ -391,7 +408,7 @@ class _DashboardTabState extends State<_DashboardTab> {
             const SizedBox(height: 16),
 
             _DaySelector(
-              days: program.days,
+              weekSchedule: program.weekSchedule,
               selectedDayId: nextDay.id,
               suggestedDayId: _suggestedDay.id,
               onSelect: (id) => setState(() {
@@ -482,21 +499,43 @@ class _RecoveryCheckCard extends StatelessWidget {
 }
 
 class _ThisWeekCard extends StatelessWidget {
-  final int completedCount;
-  const _ThisWeekCard({required this.completedCount});
+  final int currentRotation;
+  final int sessionsInRotation;
+  final int totalDaysPerRotation;
+  final int? totalRotations;
+  final bool justCompleted;
+
+  const _ThisWeekCard({
+    required this.currentRotation,
+    required this.sessionsInRotation,
+    required this.totalDaysPerRotation,
+    required this.totalRotations,
+    required this.justCompleted,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    final weekLabel = totalRotations != null
+        ? 'Week $currentRotation of $totalRotations'
+        : 'Week $currentRotation';
+    final progress = justCompleted
+        ? 'Complete!'
+        : '$sessionsInRotation of $totalDaysPerRotation days';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('This Week', style: Theme.of(context).textTheme.titleMedium),
+            Text(weekLabel, style: Theme.of(context).textTheme.titleMedium),
             Text(
-              'Workouts: $completedCount completed',
-              style: Theme.of(context).textTheme.bodyMedium,
+              progress,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: justCompleted ? c.green : null,
+                    fontWeight: justCompleted ? FontWeight.w600 : null,
+                  ),
             ),
           ],
         ),
@@ -506,13 +545,13 @@ class _ThisWeekCard extends StatelessWidget {
 }
 
 class _DaySelector extends StatelessWidget {
-  final List<WorkoutDay> days;
+  final List<WorkoutDay?> weekSchedule;
   final String selectedDayId;
   final String suggestedDayId;
   final ValueChanged<String> onSelect;
 
   const _DaySelector({
-    required this.days,
+    required this.weekSchedule,
     required this.selectedDayId,
     required this.suggestedDayId,
     required this.onSelect,
@@ -525,33 +564,55 @@ class _DaySelector extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-      children: [
-        for (final day in days) ...[
-          GestureDetector(
-            onTap: () => onSelect(day.id),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: day.id == selectedDayId ? accent : c.card,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: day.id == selectedDayId ? accent : c.border,
+        children: [
+          for (final slot in weekSchedule) ...[
+            if (slot == null)
+              // Rest day — visual only, not tappable
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: c.fill,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: c.border.withAlpha(77)),
+                ),
+                child: Text(
+                  'Rest',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: c.faint,
+                  ),
+                ),
+              )
+            else
+              GestureDetector(
+                onTap: () => onSelect(slot.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: slot.id == selectedDayId ? accent : c.card,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: slot.id == selectedDayId ? accent : c.border,
+                    ),
+                  ),
+                  child: Text(
+                    slot.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color:
+                          slot.id == selectedDayId ? c.onAccent : c.muted,
+                    ),
+                  ),
                 ),
               ),
-              child: Text(
-                day.name,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: day.id == selectedDayId ? c.onAccent : c.muted,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
         ],
-      ],
       ),
     );
   }

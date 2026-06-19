@@ -369,9 +369,28 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get allExercisesComplete {
+    if (_currentDay == null) return false;
+    return _currentDay!.exercises
+        .every((ex) => isExerciseComplete(ex.exercise.id));
+  }
+
   void _advanceToNextExercise() {
     if (isLastExercise) {
-      _startCoolDown();
+      if (allExercisesComplete) {
+        _startCoolDown();
+      } else {
+        // Find the first incomplete exercise and jump to it
+        final exercises = _currentDay!.exercises;
+        for (var i = 0; i < exercises.length; i++) {
+          if (!isExerciseComplete(exercises[i].exercise.id)) {
+            _currentExerciseIndex = i;
+            _currentSet = 1;
+            _state = WorkoutState.active;
+            break;
+          }
+        }
+      }
     } else {
       _currentExerciseIndex++;
       _currentSet = 1;

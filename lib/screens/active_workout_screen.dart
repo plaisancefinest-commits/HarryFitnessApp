@@ -740,27 +740,26 @@ class _EndOfWeekRecoveryPromptState extends State<_EndOfWeekRecoveryPrompt> {
     _check();
   }
 
+  int? _rotationNumber;
+
   Future<void> _check() async {
     final db = DatabaseService.instance;
-    final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
+    final totalSessions =
+        await db.getCompletedSessionCountForProgram(widget.program.id);
+    final rotationState = DatabaseService.computeRotation(
+        totalSessions, widget.program.days.length);
 
-    // Count completed sessions this week
-    final sessions = await db.getCompletedSessions();
-    final thisWeek =
-        sessions.where((s) => s.date.isAfter(monday)).length;
-    final totalDays = widget.program.days.length;
-
-    // Only show if this was the last workout of the week
-    if (thisWeek < totalDays) {
+    // Only show if a rotation was just completed
+    if (!rotationState.justCompleted) {
       if (mounted) setState(() { _loading = false; _show = false; });
       return;
     }
 
-    // Check if already submitted
-    final existing = await db.getRecoveryCheckForWeek(
-        widget.program.id, monday, false);
+    _rotationNumber = rotationState.rotation;
+
+    // Check if already submitted for this rotation
+    final existing = await db.getRecoveryCheckForRotation(
+        widget.program.id, rotationState.rotation, false);
     if (mounted) {
       setState(() {
         _loading = false;
@@ -778,6 +777,7 @@ class _EndOfWeekRecoveryPromptState extends State<_EndOfWeekRecoveryPrompt> {
           programId: widget.program.id,
           muscleGroups: muscles,
           isPreWeek: false,
+          rotationNumber: _rotationNumber,
         ),
       ),
     );

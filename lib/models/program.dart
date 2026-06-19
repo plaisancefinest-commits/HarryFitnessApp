@@ -57,13 +57,38 @@ class Program {
   final String name;
   final UserLevel level;
   final List<WorkoutDay> days;
+  final List<int>? restDayPositions; // 0-indexed positions in 7-day week that are rest days
 
   const Program({
     required this.id,
     required this.name,
     required this.level,
     required this.days,
+    this.restDayPositions,
   });
+
+  /// 7-slot schedule: workout days placed at their positions, null = rest day.
+  /// If [restDayPositions] is set, uses manual layout. Otherwise auto-distributes.
+  List<WorkoutDay?> get weekSchedule {
+    if (days.length >= 7) {
+      return days.take(7).cast<WorkoutDay?>().toList();
+    }
+    final schedule = List<WorkoutDay?>.filled(7, null);
+    if (restDayPositions != null) {
+      int wi = 0;
+      for (int i = 0; i < 7; i++) {
+        if (!restDayPositions!.contains(i) && wi < days.length) {
+          schedule[i] = days[wi++];
+        }
+      }
+    } else {
+      final spacing = 7.0 / days.length;
+      for (int i = 0; i < days.length; i++) {
+        schedule[(i * spacing).floor().clamp(0, 6)] = days[i];
+      }
+    }
+    return schedule;
+  }
 }
 
 class WorkoutDay {

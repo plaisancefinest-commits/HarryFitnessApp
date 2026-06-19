@@ -9,12 +9,14 @@ class RecoveryCheckScreen extends StatefulWidget {
   final String programId;
   final Set<MuscleGroup> muscleGroups;
   final bool isPreWeek;
+  final int? rotationNumber;
 
   const RecoveryCheckScreen({
     super.key,
     required this.programId,
     required this.muscleGroups,
     required this.isPreWeek,
+    this.rotationNumber,
   });
 
   @override
@@ -36,6 +38,7 @@ class _RecoveryCheckScreenState extends State<RecoveryCheckScreen> {
       programId: widget.programId,
       weekStart: monday,
       isPreWeek: widget.isPreWeek,
+      rotationNumber: widget.rotationNumber,
       ratings: _ratings.entries
           .map((e) =>
               MuscleRecoveryRating(muscleGroup: e.key, status: e.value))

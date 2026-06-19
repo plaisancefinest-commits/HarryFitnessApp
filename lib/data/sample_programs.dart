@@ -12,6 +12,7 @@ final harryProgram = Program(
   id: 'harry_program',
   name: "Harry's Program",
   level: UserLevel.intermediate,
+  restDayPositions: [2, 5, 6], // Day 1, Day 2, Rest, Day 4, Day 5, Rest, Rest
   days: [
     WorkoutDay(
       id: 'harry_day_1',

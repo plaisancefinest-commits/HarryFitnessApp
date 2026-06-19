@@ -294,6 +294,33 @@ class DatabaseService {
     return sessions.any((s) => s.programId == programId);
   }
 
+  /// Total completed sessions for [programId].
+  Future<int> getCompletedSessionCountForProgram(String programId) async {
+    final sessions = await getCompletedSessions();
+    return sessions.where((s) => s.programId == programId).length;
+  }
+
+  /// Compute rotation state from total sessions and days-per-rotation.
+  static ({int rotation, int sessionsInRotation, bool justCompleted})
+      computeRotation(int totalSessions, int daysPerRotation) {
+    if (daysPerRotation <= 0 || totalSessions == 0) {
+      return (rotation: 1, sessionsInRotation: 0, justCompleted: false);
+    }
+    final inCurrent = totalSessions % daysPerRotation;
+    if (inCurrent == 0) {
+      return (
+        rotation: totalSessions ~/ daysPerRotation,
+        sessionsInRotation: daysPerRotation,
+        justCompleted: true,
+      );
+    }
+    return (
+      rotation: (totalSessions ~/ daysPerRotation) + 1,
+      sessionsInRotation: inCurrent,
+      justCompleted: false,
+    );
+  }
+
   /// The workout_day_id of the most recently completed session for [programId],
   /// or null if no session has been completed yet.
   Future<String?> getLastCompletedDayId(String programId) async {
@@ -653,6 +680,7 @@ class DatabaseService {
       'program_id': check.programId,
       'week_start': check.weekStart.toIso8601String(),
       'is_pre_week': check.isPreWeek,
+      'rotation_number': check.rotationNumber,
       'ratings': check.ratings.map((r) => {
         'muscle_group': r.muscleGroup.name,
         'status': r.status.name,
@@ -679,6 +707,32 @@ class DatabaseService {
       programId: r['program_id'],
       weekStart: DateTime.parse(r['week_start']),
       isPreWeek: r['is_pre_week'],
+      ratings: (r['ratings'] as List).map((rt) => MuscleRecoveryRating(
+        muscleGroup: MuscleGroup.values.byName(rt['muscle_group']),
+        status: RecoveryStatus.values.byName(rt['status']),
+      )).toList(),
+      createdAt: DateTime.parse(r['created_at']),
+    );
+  }
+
+  Future<RecoveryCheck?> getRecoveryCheckForRotation(
+      String programId, int rotationNumber, bool isPreWeek) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_recoveryChecksKey);
+    if (raw == null) return null;
+    final list = List<Map<String, dynamic>>.from(jsonDecode(raw));
+    final match = list.where((r) =>
+        r['program_id'] == programId &&
+        r['is_pre_week'] == isPreWeek &&
+        r['rotation_number'] == rotationNumber);
+    if (match.isEmpty) return null;
+    final r = match.first;
+    return RecoveryCheck(
+      id: r['id'],
+      programId: r['program_id'],
+      weekStart: DateTime.parse(r['week_start']),
+      isPreWeek: r['is_pre_week'],
+      rotationNumber: r['rotation_number'],
       ratings: (r['ratings'] as List).map((rt) => MuscleRecoveryRating(
         muscleGroup: MuscleGroup.values.byName(rt['muscle_group']),
         status: RecoveryStatus.values.byName(rt['status']),

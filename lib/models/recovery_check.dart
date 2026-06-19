@@ -15,8 +15,9 @@ class MuscleRecoveryRating {
 class RecoveryCheck {
   final String id;
   final String programId;
-  final DateTime weekStart; // Monday of that week
-  final bool isPreWeek; // true = start-of-week, false = end-of-week
+  final DateTime weekStart; // Monday of that week (legacy, kept for compat)
+  final bool isPreWeek; // true = start-of-rotation, false = end-of-rotation
+  final int? rotationNumber; // rotation this check belongs to
   final List<MuscleRecoveryRating> ratings;
   final DateTime createdAt;
 
@@ -25,6 +26,7 @@ class RecoveryCheck {
     required this.programId,
     required this.weekStart,
     required this.isPreWeek,
+    this.rotationNumber,
     required this.ratings,
     required this.createdAt,
   });
